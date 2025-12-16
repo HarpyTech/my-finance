@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  api:
+    container_name: fastapi-secure-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fastapi-secure:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
