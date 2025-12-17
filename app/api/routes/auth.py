@@ -1,30 +1,33 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from app.core.security import create_access_token
 
-# from fastapi import APIRouter,  Form
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from app.core.security import create_access_token
+from app.services.auth_service import authenticate_user
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/templates")
 
 @router.post("/login")
-def login(request: Request, form: OAuth2PasswordRequestForm = Depends()):
-    # # Replace with DB validation
-    # if form.username != "admin" or form.password != "admin":
-    #     return {"error": "Invalid credentials"}
+def api_login(form: OAuth2PasswordRequestForm = Depends()):
+    """
+    API login endpoint
+    - Used by UI or API clients
+    - Returns JWT only (NO redirects, NO HTML)
+    """
+    user = authenticate_user(form.username, form.password)
 
-    # token = create_access_token(form.username)
-    # return {"access_token": token, "token_type": "bearer"}
-    # 🔐 Replace with real auth later
-    if form.username == "admin" and form.password == "admin":
-        return RedirectResponse(url="/home", status_code=302)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
 
-    return templates.TemplateResponse(
-        "login.html",
-        {
-            "request": request,
-            "error": "Invalid username or password"
-        }
-    )
+    token = create_access_token({
+        "username": user["username"],
+        "role": user["role"]
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "role": user["role"]
+    }

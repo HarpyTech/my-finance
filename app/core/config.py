@@ -10,6 +10,8 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
+    DEFAULT_LOGIN_PASSWORD: str
+
     model_config = {
         "env_file": ".env",
         "case_sensitive": True
