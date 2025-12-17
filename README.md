@@ -12,8 +12,6 @@ A personal finance management web app to track income, expenses, budgets and vis
 ✔️ Export reports (CSV / Excel)  
 ✔️ Optional authentication (if implemented)  
 
-> *Customize this list with your actual implemented features.*
-
 ---
 
 ## 📦 Tech Stack
@@ -43,8 +41,6 @@ my-finance/
 └── README.md
 
 ````
-
-*(Adjust paths & entries to match your actual structure.)*
 
 ---
 
