@@ -3,12 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.routes import auth, users, health, web
+from app.middleware.auth import AuthenticationMiddleware
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
 # --------------------
 # Middleware
 # --------------------
+# Authentication & Authorization middleware
+app.add_middleware(AuthenticationMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,

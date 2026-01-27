@@ -52,7 +52,9 @@ def web_login(
 # --------------------
 @router.get("/home", response_class=HTMLResponse)
 def home(request: Request):
+    user = request.state.user
+    role = request.state.role
     return templates.TemplateResponse(
         "home.html",
-        {"request": request, "user": "admin"}
+        {"request": request, "user": user, "role": role}
     )
