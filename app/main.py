@@ -4,12 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.routes import auth, users, health, web
 from app.middleware.auth import AuthenticationMiddleware
+from app.middleware.csrf import CSRFProtectionMiddleware
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
 # --------------------
 # Middleware
 # --------------------
+# CSRF Protection middleware (must be before authentication)
+app.add_middleware(CSRFProtectionMiddleware)
+
 # Authentication & Authorization middleware
 app.add_middleware(AuthenticationMiddleware)
 

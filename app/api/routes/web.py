@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from app.api.csrf_helper import get_csrf_token
 import requests
 
 router = APIRouter()
@@ -11,9 +12,10 @@ templates = Jinja2Templates(directory="app/templates")
 # --------------------
 @router.get("/", response_class=HTMLResponse)
 def login_page(request: Request):
+    csrf_token = get_csrf_token(request)
     return templates.TemplateResponse(
         "login.html",
-        {"request": request}
+        {"request": request, "csrf_token": csrf_token}
     )
 
 # --------------------
@@ -32,9 +34,10 @@ def web_login(
     )
 
     if response.status_code != 200:
+        csrf_token = get_csrf_token(request)
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Invalid credentials"}
+            {"request": request, "error": "Invalid credentials", "csrf_token": csrf_token}
         )
 
     token = response.json()["access_token"]
@@ -54,7 +57,8 @@ def web_login(
 def home(request: Request):
     user = request.state.user
     role = request.state.role
+    csrf_token = get_csrf_token(request)
     return templates.TemplateResponse(
         "home.html",
-        {"request": request, "user": user, "role": role}
+        {"request": request, "user": user, "role": role, "csrf_token": csrf_token}
     )
