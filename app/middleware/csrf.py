@@ -34,32 +34,50 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     CSRF_FORM_NAME = "csrf_token"
 
     async def dispatch(self, request: Request, call_next):
-        # Do not enforce CSRF checks on non-API routes.
-        if not request.url.path.startswith(settings.API_V1_STR):
+        """Process CSRF protection for each request"""
+        try:
+            # Do not enforce CSRF checks on non-API routes.
+            if not request.url.path.startswith(settings.API_V1_STR):
+                response = await call_next(request)
+                self._set_csrf_token(request, response)
+                return response
+
+            # Validate CSRF token for protected methods
+            if request.method in PROTECTED_METHODS:
+                # Skip validation for exempt paths
+                if request.url.path in CSRF_EXEMPT_PATHS:
+                    logger.debug(
+                        f"CSRF validation skipped for exempt path: {request.url.path}"
+                    )
+                    return await call_next(request)
+
+                # Validate CSRF token
+                valid = self._validate_csrf_token(request)
+                if not valid:
+                    logger.warning(
+                        f"CSRF token validation failed for "
+                        f"{request.method} {request.url.path}"
+                    )
+                    return JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content={"detail": "CSRF token validation failed"},
+                    )
+                logger.debug(
+                    f"CSRF token validated for {request.method} {request.url.path}"
+                )
+
             response = await call_next(request)
             self._set_csrf_token(request, response)
             return response
 
-        # Validate CSRF token for protected methods
-        if request.method in PROTECTED_METHODS:
-            # Skip validation for exempt paths
-            if request.url.path in CSRF_EXEMPT_PATHS:
-                return await call_next(request)
-
-            # Validate CSRF token
-            valid = self._validate_csrf_token(request)
-            if not valid:
-                logger.warning(
-                    f"CSRF token validation failed for {request.method} {request.url.path}"
-                )
-                return JSONResponse(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    content={"detail": "CSRF token validation failed"},
-                )
-
-        response = await call_next(request)
-        self._set_csrf_token(request, response)
-        return response
+        except Exception as exc:
+            logger.error(
+                f"Unexpected error in CSRF middleware: {str(exc)}", exc_info=True
+            )
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Internal server error during CSRF validation"},
+            )
 
     def _get_csrf_token_from_cookie(self, request: Request) -> str | None:
         """Get CSRF token from cookie."""

@@ -1,4 +1,14 @@
 from pydantic_settings import BaseSettings
+import logging
+
+# Configure logging before any other code runs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Secure FastAPI"
@@ -21,9 +31,15 @@ class Settings(BaseSettings):
     MONGODB_DB: str = "my_finance"
     BUILD_VERSION: str = "dev"
 
-    model_config = {
-        "env_file": ".env",
-        "case_sensitive": True
-    }
+    model_config = {"env_file": ".env", "case_sensitive": True}
 
-settings = Settings()
+
+try:
+    settings = Settings()
+    logger.info("Configuration loaded successfully")
+    logger.info(f"Project: {settings.PROJECT_NAME}")
+    logger.info(f"MongoDB Database: {settings.MONGODB_DB}")
+    logger.info(f"Build Version: {settings.BUILD_VERSION}")
+except Exception as exc:
+    logger.error(f"Failed to load configuration: {str(exc)}", exc_info=True)
+    raise

@@ -1,7 +1,10 @@
 from datetime import date
 from pymongo.errors import PyMongoError
+import logging
 
 from app.db.mongo import get_expenses_collection
+
+logger = logging.getLogger(__name__)
 
 
 def add_expense(
@@ -14,6 +17,11 @@ def add_expense(
     expense_date: date,
     line_items: list[dict] | None = None,
 ):
+    """Add a new expense for a user"""
+    logger.info(
+        f"Adding expense for user {username}: "
+        f"${amount} - {category} - {vendor} on {expense_date}"
+    )
     try:
         expenses = get_expenses_collection()
         doc = {
@@ -28,8 +36,11 @@ def add_expense(
         }
         result = expenses.insert_one(doc)
 
+        expense_id = str(result.inserted_id)
+        logger.info(f"Expense added successfully with ID: {expense_id}")
+
         return {
-            "id": str(result.inserted_id),
+            "id": expense_id,
             "amount": doc["amount"],
             "category": doc["category"],
             "bill_type": doc["bill_type"],
@@ -39,15 +50,27 @@ def add_expense(
             "line_items": doc["line_items"],
         }
     except PyMongoError as exc:
+        logger.error(
+            f"Database error while adding expense for user {username}: {str(exc)}",
+            exc_info=True,
+        )
         raise RuntimeError("Failed to store expense due to database error") from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error while adding expense for user {username}: {str(exc)}",
+            exc_info=True,
+        )
+        raise
 
 
 def list_expenses(username: str):
+    """List all expenses for a user"""
+    logger.debug(f"Fetching all expenses for user: {username}")
     try:
         expenses = get_expenses_collection()
         docs = expenses.find({"username": username}).sort("expense_date", -1)
 
-        return [
+        result = [
             {
                 "id": str(doc["_id"]),
                 "amount": round(float(doc.get("amount", 0)), 2),
@@ -60,11 +83,25 @@ def list_expenses(username: str):
             }
             for doc in docs
         ]
+        logger.info(f"Retrieved {len(result)} expenses for user: {username}")
+        return result
     except PyMongoError as exc:
+        logger.error(
+            f"Database error while fetching expenses for user {username}: {str(exc)}",
+            exc_info=True,
+        )
         raise RuntimeError("Failed to fetch expenses due to database error") from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error while fetching expenses for user {username}: {str(exc)}",
+            exc_info=True,
+        )
+        raise
 
 
 def monthly_summary(username: str, year: int):
+    """Get monthly expense summary for a user for a specific year"""
+    logger.debug(f"Fetching monthly summary for user {username} for year {year}")
     try:
         expenses = get_expenses_collection()
         start = date(year, 1, 1)
@@ -86,12 +123,34 @@ def monthly_summary(username: str, year: int):
         result = list(expenses.aggregate(pipeline))
         totals = {row["_id"]["month"]: round(float(row["total"]), 2) for row in result}
 
-        return [{"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)]
+        summary = [{"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)]
+        total_year = sum(totals.values())
+        logger.info(
+            f"Monthly summary for user {username}, year {year}: "
+            f"Total ${total_year:.2f} across {len(totals)} months"
+        )
+        return summary
     except PyMongoError as exc:
-        raise RuntimeError("Failed to fetch monthly summary due to database error") from exc
+        logger.error(
+            f"Database error while fetching monthly summary "
+            f"for user {username}, year {year}: {str(exc)}",
+            exc_info=True,
+        )
+        raise RuntimeError(
+            "Failed to fetch monthly summary due to database error"
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error while fetching monthly summary "
+            f"for user {username}, year {year}: {str(exc)}",
+            exc_info=True,
+        )
+        raise
 
 
 def yearly_summary(username: str):
+    """Get yearly expense summary for a user"""
+    logger.debug(f"Fetching yearly summary for user: {username}")
     try:
         expenses = get_expenses_collection()
         pipeline = [
@@ -105,18 +164,37 @@ def yearly_summary(username: str):
             {"$sort": {"_id.year": 1}},
         ]
         result = list(expenses.aggregate(pipeline))
-        return [
+        summary = [
             {
                 "year": row["_id"]["year"],
                 "total": round(float(row["total"]), 2),
             }
             for row in result
         ]
+        logger.info(f"Yearly summary for user {username}: {len(summary)} years of data")
+        return summary
     except PyMongoError as exc:
-        raise RuntimeError("Failed to fetch yearly summary due to database error") from exc
+        logger.error(
+            f"Database error while fetching yearly summary "
+            f"for user {username}: {str(exc)}",
+            exc_info=True,
+        )
+        raise RuntimeError(
+            "Failed to fetch yearly summary due to database error"
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error while fetching yearly summary "
+            f"for user {username}: {str(exc)}",
+            exc_info=True,
+        )
+        raise
 
 
 def category_summary(username: str, year: int | None = None, month: int | None = None):
+    """Get category-wise expense summary for a user"""
+    period = f"year={year}, month={month}" if year else "all time"
+    logger.debug(f"Fetching category summary for user {username} for {period}")
     try:
         expenses = get_expenses_collection()
         match: dict = {"username": username}
@@ -141,12 +219,31 @@ def category_summary(username: str, year: int | None = None, month: int | None =
             {"$sort": {"total": -1}},
         ]
         result = list(expenses.aggregate(pipeline))
-        return [
+        summary = [
             {
                 "category": row["_id"]["category"],
                 "total": round(float(row["total"]), 2),
             }
             for row in result
         ]
+        logger.info(
+            f"Category summary for user {username} ({period}): "
+            f"{len(summary)} categories"
+        )
+        return summary
     except PyMongoError as exc:
-        raise RuntimeError("Failed to fetch category summary due to database error") from exc
+        logger.error(
+            f"Database error while fetching category summary "
+            f"for user {username} ({period}): {str(exc)}",
+            exc_info=True,
+        )
+        raise RuntimeError(
+            "Failed to fetch category summary due to database error"
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error while fetching category summary "
+            f"for user {username} ({period}): {str(exc)}",
+            exc_info=True,
+        )
+        raise

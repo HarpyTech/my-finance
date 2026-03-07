@@ -39,47 +39,67 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     TOKEN_COOKIE_NAME = "access_token"
 
     async def dispatch(self, request: Request, call_next):
-        # Enforce authentication only for API routes.
-        if not request.url.path.startswith(settings.API_V1_STR):
-            return await call_next(request)
-
-        # Check if path is public
-        if self._is_public_path(request.url.path):
-            return await call_next(request)
-
-        # Try to extract token from cookie first, then from Authorization header
-        token = self._extract_token(request)
-
-        if not token:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Missing authentication token"},
-            )
-
-        # Validate and decode token
+        """Process authentication for each request"""
         try:
-            payload = jwt.decode(
-                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            # Enforce authentication only for API routes.
+            if not request.url.path.startswith(settings.API_V1_STR):
+                return await call_next(request)
+
+            # Check if path is public
+            if self._is_public_path(request.url.path):
+                return await call_next(request)
+
+            # Try to extract token from cookie first, then from Authorization header
+            token = self._extract_token(request)
+
+            if not token:
+                logger.warning(
+                    f"Missing authentication token for {request.method} {request.url.path}"
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Missing authentication token"},
+                )
+
+            # Validate and decode token
+            try:
+                payload = jwt.decode(
+                    token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+                )
+                username = payload.get("username")
+                role = payload.get("role")
+
+                if not username:
+                    raise JWTError("Username not found in token")
+
+                # Attach user info to request state for use in endpoints
+                request.state.user = username
+                request.state.role = role
+                logger.debug(
+                    f"User {username} authenticated for {request.method} {request.url.path}"
+                )
+
+            except JWTError as e:
+                logger.warning(
+                    f"Invalid token for {request.method} {request.url.path}: {str(e)}"
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Invalid or expired token"},
+                )
+
+            response = await call_next(request)
+            return response
+
+        except Exception as exc:
+            logger.error(
+                f"Unexpected error in authentication middleware: {str(exc)}",
+                exc_info=True,
             )
-            username = payload.get("username")
-            role = payload.get("role")
-
-            if not username:
-                raise JWTError("Username not found in token")
-
-            # Attach user info to request state for use in endpoints
-            request.state.user = username
-            request.state.role = role
-
-        except JWTError as e:
-            logger.warning(f"Invalid token: {str(e)}")
             return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Invalid or expired token"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Internal server error during authentication"},
             )
-
-        response = await call_next(request)
-        return response
 
     def _extract_token(self, request: Request) -> str | None:
         """
