@@ -1,4 +1,4 @@
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
 from app.core.config import settings
@@ -9,7 +9,11 @@ logger = logging.getLogger(__name__)
 # Public endpoints that don't require authentication
 PUBLIC_PATHS = {
     "/api/v1/auth/login",
+    "/api/v1/auth/register",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/csrf",
     "/api/v1/health",
+    "/health",
     "/",
     "/docs",
     "/openapi.json",
@@ -36,6 +40,10 @@ class AuthenticationMiddleware:
         self.app = app
 
     async def __call__(self, request: Request, call_next):
+        # Enforce authentication only for API routes.
+        if not request.url.path.startswith(settings.API_V1_STR):
+            return await call_next(request)
+
         # Check if path is public
         if self._is_public_path(request.url.path):
             return await call_next(request)
@@ -105,5 +113,5 @@ class AuthenticationMiddleware:
     @staticmethod
     def _is_public_path(path: str) -> bool:
         """Check if a path is in the public paths list."""
-        return path in PUBLIC_PATHS or path.startswith("/static/")
+        return path in PUBLIC_PATHS or path.startswith("/static/") or path.startswith("/assets/")
 

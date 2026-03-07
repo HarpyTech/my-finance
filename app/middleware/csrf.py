@@ -1,6 +1,7 @@
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from app.core.security import create_csrf_token
+from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,9 @@ PROTECTED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # Paths that don't require CSRF protection (e.g., login, API tokens)
 CSRF_EXEMPT_PATHS = {
     "/api/v1/auth/login",
+    "/api/v1/auth/register",
     "/api/v1/auth/logout",
+    "/api/v1/auth/csrf",
 }
 
 
@@ -33,9 +36,8 @@ class CSRFProtectionMiddleware:
         self.app = app
 
     async def __call__(self, request: Request, call_next):
-        # Generate CSRF token for safe methods (GET, HEAD, OPTIONS)
-        if request.method in {"GET", "HEAD", "OPTIONS"}:
-            self._set_csrf_token(request, await call_next(request))
+        # Do not enforce CSRF checks on non-API routes.
+        if not request.url.path.startswith(settings.API_V1_STR):
             response = await call_next(request)
             self._set_csrf_token(request, response)
             return response
@@ -47,7 +49,7 @@ class CSRFProtectionMiddleware:
                 return await call_next(request)
             
             # Validate CSRF token
-            valid = await self._validate_csrf_token(request)
+            valid = self._validate_csrf_token(request)
             if not valid:
                 logger.warning(f"CSRF token validation failed for {request.method} {request.url.path}")
                 return JSONResponse(
@@ -56,6 +58,7 @@ class CSRFProtectionMiddleware:
                 )
 
         response = await call_next(request)
+        self._set_csrf_token(request, response)
         return response
 
     def _get_csrf_token_from_cookie(self, request: Request) -> str | None:
@@ -71,43 +74,22 @@ class CSRFProtectionMiddleware:
                 key=self.CSRF_COOKIE_NAME,
                 value=token,
                 httponly=False,  # JavaScript needs to read it for forms
-                secure=True,     # Only sent over HTTPS in production
+                secure=False,
                 samesite="lax",  # CSRF protection
                 max_age=3600,    # 1 hour
             )
 
-    async def _validate_csrf_token(self, request: Request) -> bool:
+    def _validate_csrf_token(self, request: Request) -> bool:
         """
-        Validate CSRF token from request.
-        Checks: form data, JSON body, or X-CSRF-Token header.
+        Validate CSRF token from request using double-submit cookie.
+        Checks the X-CSRF-Token header against csrf_token cookie.
         """
         cookie_token = self._get_csrf_token_from_cookie(request)
         if not cookie_token:
             logger.warning("CSRF token not found in cookie")
             return False
 
-        request_token = None
-
-        # Try to get token from form data
-        if request.method in {"POST", "PUT", "PATCH"}:
-            try:
-                form_data = await request.form()
-                request_token = form_data.get(self.CSRF_FORM_NAME)
-            except Exception:
-                pass
-
-        # Try to get token from request header
-        if not request_token:
-            request_token = request.headers.get(self.CSRF_HEADER_NAME)
-
-        # Try to get token from JSON body
-        if not request_token:
-            try:
-                body = await request.json()
-                if isinstance(body, dict):
-                    request_token = body.get(self.CSRF_FORM_NAME)
-            except Exception:
-                pass
+        request_token = request.headers.get(self.CSRF_HEADER_NAME)
 
         if not request_token:
             logger.warning("CSRF token not found in request")

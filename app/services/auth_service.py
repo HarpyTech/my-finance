@@ -1,4 +1,4 @@
-from app.core.security import create_access_token, verify_password, hash_password
+from app.core.security import verify_password, hash_password
 from app.core.config import settings
 
 # TEMP: replace with DB later
@@ -13,6 +13,7 @@ FAKE_USERS = {
     }
 }
 
+
 def authenticate_user(username: str, password: str):
     user = FAKE_USERS.get(username)
     if not user:
@@ -26,4 +27,30 @@ def authenticate_user(username: str, password: str):
     return {
         "username": username,
         "role": user["role"]
+    }
+
+
+def register_user(username: str, password: str, role: str = "user"):
+    if username in FAKE_USERS:
+        return None
+
+    FAKE_USERS[username] = {
+        "password": hash_password(password),
+        "role": role,
+    }
+
+    return {
+        "username": username,
+        "role": role,
+    }
+
+
+def get_user(username: str):
+    user = FAKE_USERS.get(username)
+    if not user:
+        return None
+
+    return {
+        "username": username,
+        "role": user["role"],
     }
