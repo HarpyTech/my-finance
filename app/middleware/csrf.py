@@ -1,5 +1,6 @@
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.security import create_csrf_token
 from app.core.config import settings
 import logging
@@ -18,24 +19,21 @@ CSRF_EXEMPT_PATHS = {
 }
 
 
-class CSRFProtectionMiddleware:
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     """
     Middleware to protect against Cross-Site Request Forgery (CSRF) attacks.
-    
+
     - Generates CSRF token for GET requests and stores in session/cookie
     - Validates CSRF token from form data or headers for state-changing requests
     - Protects POST, PUT, PATCH, DELETE methods
     - Allows exemptions for specific API endpoints
     """
-    
+
     CSRF_COOKIE_NAME = "csrf_token"
     CSRF_HEADER_NAME = "x-csrf-token"
     CSRF_FORM_NAME = "csrf_token"
 
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):
         # Do not enforce CSRF checks on non-API routes.
         if not request.url.path.startswith(settings.API_V1_STR):
             response = await call_next(request)
@@ -47,14 +45,16 @@ class CSRFProtectionMiddleware:
             # Skip validation for exempt paths
             if request.url.path in CSRF_EXEMPT_PATHS:
                 return await call_next(request)
-            
+
             # Validate CSRF token
             valid = self._validate_csrf_token(request)
             if not valid:
-                logger.warning(f"CSRF token validation failed for {request.method} {request.url.path}")
+                logger.warning(
+                    f"CSRF token validation failed for {request.method} {request.url.path}"
+                )
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    content={"detail": "CSRF token validation failed"}
+                    content={"detail": "CSRF token validation failed"},
                 )
 
         response = await call_next(request)
@@ -76,7 +76,7 @@ class CSRFProtectionMiddleware:
                 httponly=False,  # JavaScript needs to read it for forms
                 secure=False,
                 samesite="lax",  # CSRF protection
-                max_age=3600,    # 1 hour
+                max_age=3600,  # 1 hour
             )
 
     def _validate_csrf_token(self, request: Request) -> bool:
