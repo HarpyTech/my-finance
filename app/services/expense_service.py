@@ -1,72 +1,152 @@
 from datetime import date
-from threading import Lock
+from pymongo.errors import PyMongoError
+
+from app.db.mongo import get_expenses_collection
 
 
-_EXPENSES_BY_USER: dict[str, list[dict]] = {}
-_COUNTER_BY_USER: dict[str, int] = {}
-_LOCK = Lock()
-
-
-def add_expense(username: str, amount: float, category: str, description: str, expense_date: date):
-    with _LOCK:
-        if username not in _EXPENSES_BY_USER:
-            _EXPENSES_BY_USER[username] = []
-            _COUNTER_BY_USER[username] = 1
-
-        expense_id = _COUNTER_BY_USER[username]
-        _COUNTER_BY_USER[username] += 1
-
-        item = {
-            "id": expense_id,
+def add_expense(
+    username: str,
+    amount: float,
+    category: str,
+    bill_type: str,
+    vendor: str,
+    description: str,
+    expense_date: date,
+    line_items: list[dict] | None = None,
+):
+    try:
+        expenses = get_expenses_collection()
+        doc = {
+            "username": username,
             "amount": round(float(amount), 2),
-            "category": category.strip(),
+            "category": category.strip().lower(),
+            "bill_type": bill_type.strip().lower(),
+            "vendor": vendor.strip(),
             "description": description.strip(),
-            "expense_date": expense_date.isoformat(),
+            "expense_date": expense_date,
+            "line_items": line_items or [],
         }
-        _EXPENSES_BY_USER[username].append(item)
-        return item
+        result = expenses.insert_one(doc)
+
+        return {
+            "id": str(result.inserted_id),
+            "amount": doc["amount"],
+            "category": doc["category"],
+            "bill_type": doc["bill_type"],
+            "vendor": doc["vendor"],
+            "description": doc["description"],
+            "expense_date": expense_date.isoformat(),
+            "line_items": doc["line_items"],
+        }
+    except PyMongoError as exc:
+        raise RuntimeError("Failed to store expense due to database error") from exc
 
 
 def list_expenses(username: str):
-    return list(_EXPENSES_BY_USER.get(username, []))
+    try:
+        expenses = get_expenses_collection()
+        docs = expenses.find({"username": username}).sort("expense_date", -1)
+
+        return [
+            {
+                "id": str(doc["_id"]),
+                "amount": round(float(doc.get("amount", 0)), 2),
+                "category": doc.get("category", "other"),
+                "bill_type": doc.get("bill_type", "other"),
+                "vendor": doc.get("vendor", ""),
+                "description": doc.get("description", ""),
+                "expense_date": doc["expense_date"].isoformat(),
+                "line_items": doc.get("line_items", []),
+            }
+            for doc in docs
+        ]
+    except PyMongoError as exc:
+        raise RuntimeError("Failed to fetch expenses due to database error") from exc
 
 
 def monthly_summary(username: str, year: int):
-    summary: dict[int, float] = {m: 0.0 for m in range(1, 13)}
-    for item in _EXPENSES_BY_USER.get(username, []):
-        d = date.fromisoformat(item["expense_date"])
-        if d.year == year:
-            summary[d.month] += float(item["amount"])
+    try:
+        expenses = get_expenses_collection()
+        start = date(year, 1, 1)
+        end = date(year + 1, 1, 1)
+        pipeline = [
+            {
+                "$match": {
+                    "username": username,
+                    "expense_date": {"$gte": start, "$lt": end},
+                }
+            },
+            {
+                "$group": {
+                    "_id": {"month": {"$month": "$expense_date"}},
+                    "total": {"$sum": "$amount"},
+                }
+            },
+        ]
+        result = list(expenses.aggregate(pipeline))
+        totals = {row["_id"]["month"]: round(float(row["total"]), 2) for row in result}
 
-    return [
-        {"month": month, "total": round(total, 2)}
-        for month, total in sorted(summary.items())
-    ]
+        return [{"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)]
+    except PyMongoError as exc:
+        raise RuntimeError("Failed to fetch monthly summary due to database error") from exc
 
 
 def yearly_summary(username: str):
-    summary: dict[int, float] = {}
-    for item in _EXPENSES_BY_USER.get(username, []):
-        d = date.fromisoformat(item["expense_date"])
-        summary[d.year] = summary.get(d.year, 0.0) + float(item["amount"])
-
-    return [
-        {"year": year, "total": round(total, 2)}
-        for year, total in sorted(summary.items())
-    ]
+    try:
+        expenses = get_expenses_collection()
+        pipeline = [
+            {"$match": {"username": username}},
+            {
+                "$group": {
+                    "_id": {"year": {"$year": "$expense_date"}},
+                    "total": {"$sum": "$amount"},
+                }
+            },
+            {"$sort": {"_id.year": 1}},
+        ]
+        result = list(expenses.aggregate(pipeline))
+        return [
+            {
+                "year": row["_id"]["year"],
+                "total": round(float(row["total"]), 2),
+            }
+            for row in result
+        ]
+    except PyMongoError as exc:
+        raise RuntimeError("Failed to fetch yearly summary due to database error") from exc
 
 
 def category_summary(username: str, year: int | None = None, month: int | None = None):
-    summary: dict[str, float] = {}
-    for item in _EXPENSES_BY_USER.get(username, []):
-        d = date.fromisoformat(item["expense_date"])
-        if year is not None and d.year != year:
-            continue
-        if month is not None and d.month != month:
-            continue
-        summary[item["category"]] = summary.get(item["category"], 0.0) + float(item["amount"])
+    try:
+        expenses = get_expenses_collection()
+        match: dict = {"username": username}
+        if year is not None:
+            start_month = month if month is not None else 1
+            end_month = month if month is not None else 12
+            start = date(year, start_month, 1)
+            if month is None:
+                end = date(year + 1, 1, 1)
+            else:
+                end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+            match["expense_date"] = {"$gte": start, "$lt": end}
 
-    return [
-        {"category": category, "total": round(total, 2)}
-        for category, total in sorted(summary.items(), key=lambda x: x[1], reverse=True)
-    ]
+        pipeline = [
+            {"$match": match},
+            {
+                "$group": {
+                    "_id": {"category": "$category"},
+                    "total": {"$sum": "$amount"},
+                }
+            },
+            {"$sort": {"total": -1}},
+        ]
+        result = list(expenses.aggregate(pipeline))
+        return [
+            {
+                "category": row["_id"]["category"],
+                "total": round(float(row["total"]), 2),
+            }
+            for row in result
+        ]
+    except PyMongoError as exc:
+        raise RuntimeError("Failed to fetch category summary due to database error") from exc

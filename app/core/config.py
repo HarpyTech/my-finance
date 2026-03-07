@@ -17,6 +17,10 @@ class Settings(BaseSettings):
 
     DEFAULT_LOGIN_PASSWORD: str
 
+    MONGODB_URI: str = "mongodb://localhost:27017"
+    MONGODB_DB: str = "my_finance"
+    BUILD_VERSION: str = "dev"
+
     model_config = {
         "env_file": ".env",
         "case_sensitive": True

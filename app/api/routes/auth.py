@@ -1,20 +1,10 @@
-from pydantic import BaseModel, EmailStr, Field
 from fastapi import APIRouter, HTTPException, Request, Response, status
 
 from app.core.security import create_access_token
 from app.services.auth_service import authenticate_user, register_user
+from app.models.user import UserCreate, UserLogin
 
 router = APIRouter()
-
-
-class RegisterRequest(BaseModel):
-    username: EmailStr
-    password: str = Field(min_length=8)
-
-
-class LoginRequest(BaseModel):
-    username: EmailStr
-    password: str
 
 
 COOKIE_NAME = "access_token"
@@ -32,8 +22,14 @@ def _set_session_cookie(response: Response, token: str) -> None:
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-def api_register(payload: RegisterRequest):
-    user = register_user(payload.username, payload.password)
+def api_register(payload: UserCreate):
+    try:
+        user = register_user(payload.username, payload.password)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
     if not user:
         raise HTTPException(
@@ -60,7 +56,7 @@ async def api_login(request: Request, response: Response):
 
     if "application/json" in content_type:
         body = await request.json()
-        payload = LoginRequest(**body)
+        payload = UserLogin(**body)
         username = payload.username
         password = payload.password
     else:
@@ -74,7 +70,13 @@ async def api_login(request: Request, response: Response):
             detail="username and password are required",
         )
 
-    user = authenticate_user(username, password)
+    try:
+        user = authenticate_user(username, password)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
     if not user:
         raise HTTPException(
