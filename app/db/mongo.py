@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
-from pymongo.errors import PyMongoError
+from pymongo.errors import OperationFailure, PyMongoError
 import logging
 
 from app.core.config import settings
@@ -11,18 +11,47 @@ logger = logging.getLogger(__name__)
 _client: MongoClient | None = None
 
 
+def _safe_create_indexes(collection: Collection, index_specs: list[dict]) -> None:
+    """Create indexes if allowed; do not fail requests on permission issues."""
+    for spec in index_specs:
+        try:
+            if spec["kind"] == "single":
+                collection.create_index(
+                    spec["field"],
+                    unique=spec.get("unique", False),
+                )
+            else:
+                collection.create_index(spec["fields"])
+        except OperationFailure as exc:
+            logger.warning(
+                "Skipping index creation due to DB permissions: %s",
+                str(exc),
+            )
+        except PyMongoError as exc:
+            logger.warning(
+                "Skipping index creation due to DB error: %s",
+                str(exc),
+            )
+
+
 def get_mongo_client() -> MongoClient:
     """Get or create MongoDB client connection"""
     global _client
     if _client is None:
         try:
             logger.info("Connecting to MongoDB")
-            _client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=3000)
+            _client = MongoClient(
+                settings.MONGODB_URI,
+                serverSelectionTimeoutMS=3000,
+            )
             # Test the connection
             _client.admin.command("ping")
             logger.info("Successfully connected to MongoDB")
         except PyMongoError as exc:
-            logger.error(f"Failed to connect to MongoDB: {str(exc)}", exc_info=True)
+            logger.error(
+                f"Failed to connect to MongoDB: {str(exc)}",
+                exc_info=True,
+            )
             raise
     return _client
 
@@ -42,12 +71,18 @@ def get_users_collection() -> Collection:
     """Get the users collection with indexes"""
     try:
         collection = get_database()["users"]
-        # Ensure unique index on username
-        collection.create_index("username", unique=True)
+        # Ensure unique index on username (best effort)
+        _safe_create_indexes(
+            collection,
+            [{"kind": "single", "field": "username", "unique": True}],
+        )
         logger.debug("Users collection accessed with indexes ensured")
         return collection
     except PyMongoError as exc:
-        logger.error(f"Failed to access users collection: {str(exc)}", exc_info=True)
+        logger.error(
+            f"Failed to access users collection: {str(exc)}",
+            exc_info=True,
+        )
         raise
     except Exception as exc:
         logger.error(
@@ -61,13 +96,27 @@ def get_expenses_collection() -> Collection:
     """Get the expenses collection with indexes"""
     try:
         collection = get_database()["expenses"]
-        # Ensure indexes for efficient queries
-        collection.create_index([("username", 1), ("expense_date", -1)])
-        collection.create_index([("username", 1), ("bill_type", 1)])
+        # Ensure indexes for efficient queries (best effort)
+        _safe_create_indexes(
+            collection,
+            [
+                {
+                    "kind": "compound",
+                    "fields": [("username", 1), ("expense_date", -1)],
+                },
+                {
+                    "kind": "compound",
+                    "fields": [("username", 1), ("bill_type", 1)],
+                },
+            ],
+        )
         logger.debug("Expenses collection accessed with indexes ensured")
         return collection
     except PyMongoError as exc:
-        logger.error(f"Failed to access expenses collection: {str(exc)}", exc_info=True)
+        logger.error(
+            f"Failed to access expenses collection: {str(exc)}",
+            exc_info=True,
+        )
         raise
     except Exception as exc:
         logger.error(

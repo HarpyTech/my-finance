@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from typing import Optional
 import logging
 
+
 # Context variable to store trace ID for the current request
 _trace_id_context: ContextVar[Optional[str]] = ContextVar("trace_id", default=None)
 
@@ -48,18 +49,33 @@ class TraceIDFilter(logging.Filter):
         return True
 
 
+_ORIGINAL_RECORD_FACTORY = logging.getLogRecordFactory()
+
+
+def _trace_record_factory(*args, **kwargs) -> logging.LogRecord:
+    """Ensure every LogRecord has a trace_id field."""
+    record = _ORIGINAL_RECORD_FACTORY(*args, **kwargs)
+    if not hasattr(record, "trace_id"):
+        record.trace_id = get_trace_id() or "no-trace"
+    return record
+
+
 def setup_trace_logging():
     """
     Configure logging to include trace IDs in all log messages.
 
     Call this during application startup to enable trace ID logging.
     """
-    # Add the trace ID filter to the root logger
+    # Ensure ALL log records (including 3rd-party libraries) carry trace_id.
+    logging.setLogRecordFactory(_trace_record_factory)
+
     root_logger = logging.getLogger()
-    root_logger.addFilter(TraceIDFilter())
+    trace_filter = TraceIDFilter()
+    root_logger.addFilter(trace_filter)
 
     # Update the logging format to include trace_id
     for handler in root_logger.handlers:
+        handler.addFilter(trace_filter)
         formatter = logging.Formatter(
             "%(asctime)s - [%(trace_id)s] - %(name)s - " "%(levelname)s - %(message)s"
         )
