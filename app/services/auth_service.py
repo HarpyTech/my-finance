@@ -28,9 +28,9 @@ def _ensure_default_users() -> None:
                         "role": user["role"],
                     }
                 )
-                logger.info(f"Created default user: {user['username']}")
+                logger.info(f"Created default user with role: {user['role']}")
             else:
-                logger.debug(f"Default user already exists: {user['username']}")
+                logger.debug(f"Default user with role {user['role']} exists")
     except PyMongoError as exc:
         logger.error(
             f"Database error while ensuring default users: {str(exc)}",
@@ -41,35 +41,33 @@ def _ensure_default_users() -> None:
 
 def authenticate_user(username: str, password: str):
     """Authenticate a user with username and password"""
-    logger.info(f"Authentication attempt for user: {username}")
+    logger.info("Authentication attempt initiated")
     try:
         _ensure_default_users()
         users = get_users_collection()
         user = users.find_one({"username": username})
         if not user:
-            logger.warning(f"Authentication failed: User not found - {username}")
+            logger.warning("Authentication failed: User not found")
             return None
 
         if not verify_password(password, user["password_hash"]):
-            logger.warning(
-                f"Authentication failed: Invalid password for user - {username}"
-            )
+            logger.warning("Authentication failed: Invalid password")
             return None
 
-        logger.info(f"User authenticated successfully: {username}")
+        logger.info("User authenticated successfully")
         return {
             "username": user["username"],
             "role": user.get("role", "user"),
         }
     except PyMongoError as exc:
         logger.error(
-            f"Database error during authentication for user {username}: {str(exc)}",
+            f"Database error during authentication: {str(exc)}",
             exc_info=True,
         )
         raise RuntimeError("Failed to authenticate user due to database error") from exc
     except Exception as exc:
         logger.error(
-            f"Unexpected error during authentication for user {username}: {str(exc)}",
+            f"Unexpected error during authentication: {str(exc)}",
             exc_info=True,
         )
         raise
@@ -77,12 +75,12 @@ def authenticate_user(username: str, password: str):
 
 def register_user(username: str, password: str, role: str = "user"):
     """Register a new user"""
-    logger.info(f"User registration attempt: {username}")
+    logger.info("User registration attempt initiated")
     try:
         users = get_users_collection()
         exists = users.find_one({"username": username}, {"_id": 1})
         if exists:
-            logger.warning(f"Registration failed: User already exists - {username}")
+            logger.warning("Registration failed: User already exists")
             return None
 
         users.insert_one(
@@ -93,20 +91,20 @@ def register_user(username: str, password: str, role: str = "user"):
             }
         )
 
-        logger.info(f"User registered successfully: {username} with role: {role}")
+        logger.info(f"User registered successfully with role: {role}")
         return {
             "username": username,
             "role": role,
         }
     except PyMongoError as exc:
         logger.error(
-            f"Database error during registration for user {username}: {str(exc)}",
+            f"Database error during registration: {str(exc)}",
             exc_info=True,
         )
         raise RuntimeError("Failed to register user due to database error") from exc
     except Exception as exc:
         logger.error(
-            f"Unexpected error during registration for user {username}: {str(exc)}",
+            f"Unexpected error during registration: {str(exc)}",
             exc_info=True,
         )
         raise
@@ -114,7 +112,7 @@ def register_user(username: str, password: str, role: str = "user"):
 
 def get_user(username: str):
     """Get user information by username"""
-    logger.debug(f"Fetching user: {username}")
+    logger.debug("Fetching user information")
     try:
         users = get_users_collection()
         user = users.find_one({"username": username})

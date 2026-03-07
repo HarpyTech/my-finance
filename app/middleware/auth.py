@@ -53,9 +53,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             token = self._extract_token(request)
 
             if not token:
-                logger.warning(
-                    f"Missing authentication token for {request.method} {request.url.path}"
-                )
+                logger.warning("Missing authentication token")
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content={"detail": "Missing authentication token"},
@@ -75,14 +73,10 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 # Attach user info to request state for use in endpoints
                 request.state.user = username
                 request.state.role = role
-                logger.debug(
-                    f"User {username} authenticated for {request.method} {request.url.path}"
-                )
+                logger.debug("User authenticated successfully")
 
             except JWTError as e:
-                logger.warning(
-                    f"Invalid token for {request.method} {request.url.path}: {str(e)}"
-                )
+                logger.warning(f"Invalid token: {str(e)}")
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content={"detail": "Invalid or expired token"},

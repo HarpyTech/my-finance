@@ -7,15 +7,18 @@ import logging
 import traceback
 
 from app.core.config import settings
+from app.core.tracing import setup_trace_logging
 from app.api.routes import auth, users, health, expenses
+from app.middleware.tracing import TraceIDMiddleware
 from app.middleware.auth import AuthenticationMiddleware
 from app.middleware.csrf import CSRFProtectionMiddleware
 
-# Configure logging
+# Configure logging with trace ID support
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+setup_trace_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.PROJECT_NAME)
@@ -30,7 +33,7 @@ async def startup_event():
     logger.info(f"Starting {settings.PROJECT_NAME}")
     logger.info(f"Build version: {settings.BUILD_VERSION}")
     logger.info(f"API prefix: {settings.API_V1_STR}")
-    logger.info(f"MongoDB URI: {settings.MONGODB_URI}")
+    logger.info("MongoDB connection configured")
 
 
 @app.on_event("shutdown")
@@ -67,6 +70,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 # --------------------
 # Middleware
 # --------------------
+# Trace ID middleware (must be first to track all requests)
+app.add_middleware(TraceIDMiddleware)
+logger.info("Trace ID middleware registered")
+
 # CSRF Protection middleware (must be before authentication)
 app.add_middleware(CSRFProtectionMiddleware)
 logger.info("CSRF Protection middleware registered")

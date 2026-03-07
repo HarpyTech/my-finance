@@ -16,7 +16,7 @@ def get_mongo_client() -> MongoClient:
     global _client
     if _client is None:
         try:
-            logger.info(f"Connecting to MongoDB at {settings.MONGODB_URI}")
+            logger.info("Connecting to MongoDB")
             _client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=3000)
             # Test the connection
             _client.admin.command("ping")
@@ -71,7 +71,7 @@ def get_expenses_collection() -> Collection:
         raise
     except Exception as exc:
         logger.error(
-            f"Unexpected error accessing expenses collection: {str(exc)}",
+            f"Unexpected error accessing expenses collection: " f"{str(exc)}",
             exc_info=True,
         )
         raise

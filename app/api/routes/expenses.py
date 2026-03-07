@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @router.post("", status_code=201)
 def create_expense(payload: ExpenseCreate, user: str = Depends(get_current_user)):
     """Create a new expense"""
-    logger.info(f"Create expense request from user: {user}")
+    logger.info("Create expense request received")
     try:
         result = add_expense(
             username=user,
@@ -31,17 +31,17 @@ def create_expense(payload: ExpenseCreate, user: str = Depends(get_current_user)
             expense_date=payload.expense_date,
             line_items=[item.model_dump() for item in payload.line_items],
         )
-        logger.info(f"Expense created successfully for user: {user}")
+        logger.info("Expense created successfully")
         return result
     except RuntimeError as exc:
-        logger.error(f"Service error creating expense for user {user}: {str(exc)}")
+        logger.error(f"Service error creating expense: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
     except Exception as exc:
         logger.error(
-            f"Unexpected error creating expense for user {user}: {str(exc)}",
+            f"Unexpected error creating expense: {str(exc)}",
             exc_info=True,
         )
         raise
@@ -50,20 +50,20 @@ def create_expense(payload: ExpenseCreate, user: str = Depends(get_current_user)
 @router.get("")
 def get_expenses(user: str = Depends(get_current_user)):
     """Get all expenses for the current user"""
-    logger.info(f"Get expenses request from user: {user}")
+    logger.info("Get expenses request received")
     try:
         result = {"items": list_expenses(user)}
-        logger.info(f"Retrieved {len(result['items'])} expenses for user: {user}")
+        logger.info(f"Retrieved {len(result['items'])} expenses")
         return result
     except RuntimeError as exc:
-        logger.error(f"Service error fetching expenses for user {user}: {str(exc)}")
+        logger.error(f"Service error fetching expenses: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
     except Exception as exc:
         logger.error(
-            f"Unexpected error fetching expenses for user {user}: {str(exc)}",
+            f"Unexpected error fetching expenses: {str(exc)}",
             exc_info=True,
         )
         raise
@@ -75,22 +75,20 @@ def get_monthly_summary(
     user: str = Depends(get_current_user),
 ):
     """Get monthly expense summary"""
-    logger.info(f"Monthly summary request from user {user} for year: {year}")
+    logger.info(f"Monthly summary request for year: {year}")
     try:
         result = {"items": monthly_summary(user, year)}
-        logger.info(f"Monthly summary retrieved for user {user}, year {year}")
+        logger.info(f"Monthly summary retrieved for year {year}")
         return result
     except RuntimeError as exc:
-        logger.error(
-            f"Service error fetching monthly summary for user {user}: {str(exc)}"
-        )
+        logger.error(f"Service error fetching monthly summary: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
     except Exception as exc:
         logger.error(
-            f"Unexpected error fetching monthly summary for user {user}: {str(exc)}",
+            f"Unexpected error fetching monthly summary: {str(exc)}",
             exc_info=True,
         )
         raise
@@ -99,22 +97,20 @@ def get_monthly_summary(
 @router.get("/summary/yearly")
 def get_yearly_summary(user: str = Depends(get_current_user)):
     """Get yearly expense summary"""
-    logger.info(f"Yearly summary request from user: {user}")
+    logger.info("Yearly summary request received")
     try:
         result = {"items": yearly_summary(user)}
-        logger.info(f"Yearly summary retrieved for user: {user}")
+        logger.info("Yearly summary retrieved")
         return result
     except RuntimeError as exc:
-        logger.error(
-            f"Service error fetching yearly summary for user {user}: {str(exc)}"
-        )
+        logger.error(f"Service error fetching yearly summary: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
     except Exception as exc:
         logger.error(
-            f"Unexpected error fetching yearly summary for user {user}: {str(exc)}",
+            f"Unexpected error fetching yearly summary: {str(exc)}",
             exc_info=True,
         )
         raise
@@ -127,27 +123,20 @@ def get_category_summary(
     user: str = Depends(get_current_user),
 ):
     """Get category-wise expense summary"""
-    logger.info(
-        f"Category summary request from user {user} " f"(year={year}, month={month})"
-    )
+    logger.info(f"Category summary request (year={year}, month={month})")
     try:
         result = {"items": category_summary(user, year=year, month=month)}
-        logger.info(
-            f"Category summary retrieved for user {user} "
-            f"(year={year}, month={month})"
-        )
+        logger.info(f"Category summary retrieved (year={year}, month={month})")
         return result
     except RuntimeError as exc:
-        logger.error(
-            f"Service error fetching category summary for user {user}: {str(exc)}"
-        )
+        logger.error(f"Service error fetching category summary: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
     except Exception as exc:
         logger.error(
-            f"Unexpected error fetching category summary for user {user}: {str(exc)}",
+            f"Unexpected error fetching category summary: {str(exc)}",
             exc_info=True,
         )
         raise

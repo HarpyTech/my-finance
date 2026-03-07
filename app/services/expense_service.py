@@ -65,7 +65,7 @@ def add_expense(
 
 def list_expenses(username: str):
     """List all expenses for a user"""
-    logger.debug(f"Fetching all expenses for user: {username}")
+    logger.debug("Fetching all expenses for user")
     try:
         expenses = get_expenses_collection()
         docs = expenses.find({"username": username}).sort("expense_date", -1)
@@ -83,11 +83,11 @@ def list_expenses(username: str):
             }
             for doc in docs
         ]
-        logger.info(f"Retrieved {len(result)} expenses for user: {username}")
+            logger.info(f"Retrieved {len(result)} expenses")
         return result
     except PyMongoError as exc:
-        logger.error(
-            f"Database error while fetching expenses for user {username}: {str(exc)}",
+            logger.error(
+                f"Database error while fetching expenses: {str(exc)}",
             exc_info=True,
         )
         raise RuntimeError("Failed to fetch expenses due to database error") from exc
@@ -101,7 +101,7 @@ def list_expenses(username: str):
 
 def monthly_summary(username: str, year: int):
     """Get monthly expense summary for a user for a specific year"""
-    logger.debug(f"Fetching monthly summary for user {username} for year {year}")
+        logger.debug(f"Fetching monthly summary for year {year}")
     try:
         expenses = get_expenses_collection()
         start = date(year, 1, 1)
@@ -125,10 +125,10 @@ def monthly_summary(username: str, year: int):
 
         summary = [{"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)]
         total_year = sum(totals.values())
-        logger.info(
-            f"Monthly summary for user {username}, year {year}: "
-            f"Total ${total_year:.2f} across {len(totals)} months"
-        )
+            logger.info(
+                f"Monthly summary for year {year}: "
+                f"Total ${total_year:.2f} across {len(totals)} months"
+            )
         return summary
     except PyMongoError as exc:
         logger.error(
@@ -150,7 +150,7 @@ def monthly_summary(username: str, year: int):
 
 def yearly_summary(username: str):
     """Get yearly expense summary for a user"""
-    logger.debug(f"Fetching yearly summary for user: {username}")
+        logger.debug("Fetching yearly summary for user")
     try:
         expenses = get_expenses_collection()
         pipeline = [
@@ -171,7 +171,7 @@ def yearly_summary(username: str):
             }
             for row in result
         ]
-        logger.info(f"Yearly summary for user {username}: {len(summary)} years of data")
+            logger.info(f"Yearly summary: {len(summary)} years of data")
         return summary
     except PyMongoError as exc:
         logger.error(
@@ -194,7 +194,7 @@ def yearly_summary(username: str):
 def category_summary(username: str, year: int | None = None, month: int | None = None):
     """Get category-wise expense summary for a user"""
     period = f"year={year}, month={month}" if year else "all time"
-    logger.debug(f"Fetching category summary for user {username} for {period}")
+        logger.debug(f"Fetching category summary for period: {period}")
     try:
         expenses = get_expenses_collection()
         match: dict = {"username": username}
@@ -226,10 +226,10 @@ def category_summary(username: str, year: int | None = None, month: int | None =
             }
             for row in result
         ]
-        logger.info(
-            f"Category summary for user {username} ({period}): "
-            f"{len(summary)} categories"
-        )
+            logger.info(
+                f"Category summary ({period}): "
+                f"{len(summary)} categories"
+            )
         return summary
     except PyMongoError as exc:
         logger.error(

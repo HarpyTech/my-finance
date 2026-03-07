@@ -26,7 +26,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def api_register(payload: UserCreate):
     """Register a new user"""
-    logger.info(f"Registration request received for: {payload.username}")
+    logger.info("Registration request received")
     try:
         user = register_user(payload.username, payload.password)
     except RuntimeError as exc:
@@ -37,13 +37,13 @@ def api_register(payload: UserCreate):
         ) from exc
 
     if not user:
-        logger.warning(f"Registration failed: User already exists - {payload.username}")
+        logger.warning("Registration failed: User already exists")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already exists",
         )
 
-    logger.info(f"User registered successfully: {payload.username}")
+    logger.info("User registered successfully")
     return {
         "message": "User registered successfully",
         "user": user,
@@ -58,7 +58,7 @@ async def api_login(request: Request, response: Response):
     - Supports form and JSON requests
     - Returns JWT and sets session cookie
     """
-    logger.info(f"Login request received from {request.client.host}")
+    logger.info("Login request received")
     content_type = request.headers.get("content-type", "")
     username = ""
     password = ""
@@ -68,12 +68,12 @@ async def api_login(request: Request, response: Response):
         payload = UserLogin(**body)
         username = payload.username
         password = payload.password
-        logger.debug(f"JSON login attempt for user: {username}")
+        logger.debug("JSON login attempt received")
     else:
         form = await request.form()
         username = form.get("username", "")
         password = form.get("password", "")
-        logger.debug(f"Form login attempt for user: {username}")
+        logger.debug("Form login attempt received")
 
     if not username or not password:
         logger.warning("Login failed: Missing username or password")
@@ -92,9 +92,10 @@ async def api_login(request: Request, response: Response):
         ) from exc
 
     if not user:
-        logger.warning(f"Login failed: Invalid credentials for user - {username}")
+        logger.warning("Login failed: Invalid credentials")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
         )
 
     token = create_access_token({"username": user["username"], "role": user["role"]})
