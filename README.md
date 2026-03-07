@@ -71,15 +71,23 @@ pip install -r requirements.txt
 
 4. **Configure environment variables**
 
-Create a `.env` file and add your settings:
+Copy the example environment file and configure your settings:
 
 ```bash
-SECRET_KEY=change-this-secret-in-prod
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-DEFAULT_LOGIN_PASSWORD=123#420
+cp .env.example .env
 ```
 
-*(Update to your actual config variables.)*
+Update the `.env` file with your actual configuration. See [SECRET-MANAGEMENT.md](./SECRET-MANAGEMENT.md) for secure credential management options.
+
+**Required Variables:**
+- `SECRET_KEY` - JWT signing key (generate with `openssl rand -hex 32`)
+- `MONGODB_URI` - MongoDB connection string
+- `DEFAULT_LOGIN_PASSWORD` - Default user password
+- `ACCESS_TOKEN_EXPIRE_MINUTES` - JWT token expiration time
+- `DEFAULT_USER_EMAIL` - Default user email
+- `DEFAULT_USER_NAME` - Default user name
+
+For production deployments, use credential managers instead of `.env` files. See [🔐 Secret Management](#-secret-management) below.
 
 5. **Run the app**
 
@@ -100,7 +108,60 @@ docker build -t my-finance:latest .
 docker-compose up
 ```
 
+**Environment Configuration:**
+- Docker Compose automatically loads from `.env` file if present
+- If `.env` is not found, it falls back to default values specified in `docker-compose.yml`
+- For production, use credential managers (see [🔐 Secret Management](#-secret-management))
+
+**Using Credential Managers:**
+
+Windows (PowerShell):
+```powershell
+.\load-secrets.ps1
+docker-compose up
+```
+
+Linux/macOS (Bash):
+```bash
+./load-secrets.sh
+docker-compose up
+```
+
 The application will be available at **[http://localhost:8000](http://localhost:8000)** *(if exposed via compose)*
+
+---
+
+## 🔐 Secret Management
+
+For secure credential management in production environments, this project supports multiple approaches:
+
+1. **Credential Managers** (Recommended for Production)
+   - Windows: Credential Manager
+   - macOS: Keychain
+   - Linux: Secret Service (secret-tool)
+
+2. **Azure Key Vault** (Enterprise)
+
+3. **Docker Secrets** (Container Orchestration)
+
+4. **Environment Variables** (Development Only)
+
+**Quick Start:**
+
+Windows:
+```powershell
+# Load secrets from Windows Credential Manager
+.\load-secrets.ps1
+```
+
+Linux/macOS:
+```bash
+# Load secrets from system credential manager
+./load-secrets.sh
+```
+
+**Full Documentation:**  
+See [SECRET-MANAGEMENT.md](./SECRET-MANAGEMENT.md) for comprehensive setup instructions, examples, and best practices for each platform.
 
 ---
 

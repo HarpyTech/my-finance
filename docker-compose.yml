@@ -9,16 +9,51 @@ services:
     image: fastapi-secure:latest
     ports:
       - "8000:8000"
+    
+    # Environment configuration with fallback support
+    # Priority: 1) .env file, 2) System environment variables, 3) Docker secrets
     env_file:
-      - .env
+      - .env  # Optional: Will be ignored if file doesn't exist
+    
+    environment:
+      # Application Configuration
+      - PROJECT_NAME=${PROJECT_NAME:-My Finance App}
+      - BUILD_VERSION=${BUILD_VERSION:-dev}
+      - API_V1_STR=${API_V1_STR:-/api/v1}
+      
+      # Security Settings (use Docker secrets in production)
+      # Example: docker secret create secret_key /path/to/secret
+      - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-change-in-prod}
+      - ALGORITHM=${ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - DEFAULT_LOGIN_PASSWORD=${DEFAULT_LOGIN_PASSWORD:-ChangeMe123!}
+      
+      # MongoDB Configuration
+      - MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
+      - MONGODB_DB=${MONGODB_DB:-my_finance}
+    
+    # Alternative: Use Docker secrets (uncomment for production with Docker Swarm)
+    # secrets:
+    #   - secret_key
+    #   - default_password
+    
     restart: unless-stopped
+    
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+    
     deploy:
       resources:
         limits:
           cpus: "1.0"
           memory: 512M
+
+# Uncomment for Docker Swarm secrets support
+# secrets:
+#   secret_key:
+#     external: true
+#   default_password:
+#     external: true
