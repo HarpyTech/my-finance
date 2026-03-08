@@ -86,11 +86,59 @@ jobs:
               yaml.safe_dump(data, f)
           PY
 
+      - name: Resolve deploy parameters
+        shell: bash
+        run: |
+          REGION="${{ secrets.GCP_REGION }}"
+          if [ -z "${REGION}" ]; then
+            REGION="asia-south1"
+          fi
+
+          SERVICE_NAME="${{ secrets.CLOUD_RUN_SERVICE }}"
+          if [ -z "${SERVICE_NAME}" ]; then
+            SERVICE_NAME="finance-prod"
+          fi
+
+          # Use the service name as Artifact Registry repository name to avoid extra secrets.
+          AR_REPOSITORY="${SERVICE_NAME}"
+
+          AR_HOST="${REGION}-docker.pkg.dev"
+          IMAGE_URI="${AR_HOST}/${{ secrets.GCP_PROJECT_ID }}/${AR_REPOSITORY}/${SERVICE_NAME}:${{ github.sha }}"
+
+          echo "REGION=${REGION}" >> "$GITHUB_ENV"
+          echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
+          echo "AR_REPOSITORY=${AR_REPOSITORY}" >> "$GITHUB_ENV"
+          echo "AR_HOST=${AR_HOST}" >> "$GITHUB_ENV"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Ensure Artifact Registry repository exists
+        shell: bash
+        run: |
+          if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" --project "${{ secrets.GCP_PROJECT_ID }}" > /dev/null 2>&1; then
+            gcloud artifacts repositories create "${AR_REPOSITORY}" \
+              --repository-format=docker \
+              --location "${REGION}" \
+              --description "Docker images for ${SERVICE_NAME}" \
+              --project "${{ secrets.GCP_PROJECT_ID }}"
+          fi
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker "${AR_HOST}" --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build -t "${IMAGE_URI}" .
+
+      - name: Push image to Artifact Registry
+        run: |
+          docker push "${IMAGE_URI}"
+
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy "${{ secrets.CLOUD_RUN_SERVICE }}" \
-            --source . \
-            --region "${{ secrets.GCP_REGION }}" \
+          gcloud run deploy "${SERVICE_NAME}" \
+            --image "${IMAGE_URI}" \
+            --region "${REGION}" \
             --platform managed \
             --allow-unauthenticated \
             --port 8000 \
