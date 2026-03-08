@@ -171,28 +171,23 @@ This repository includes a workflow at `.github/workflows/deploy-cloud-run.yml`.
 
 It deploys automatically when code is pushed to `main` (and can also be run manually with `workflow_dispatch`).
 
+Deployment flow:
+1. Build Docker image
+2. Push image to Artifact Registry
+3. Deploy image to Cloud Run
+
 ### 1) Add Required GitHub Secrets
 
 Add these in GitHub: **Settings -> Secrets and variables -> Actions -> Secrets**.
 
-**Authentication Secrets (choose one)**
-
-Google recommends [Workload Identity Federation (WIF)](https://cloud.google.com/iam/docs/workload-identity-federation) over long-lived service account keys to eliminate key leakage and rotation risk.
-
-*Option A – Workload Identity Federation (recommended):*
-- `GCP_WORKLOAD_IDENTITY_PROVIDER` = fully qualified WIF provider resource name  
-  (example: `projects/123456789/locations/global/workloadIdentityPools/my-pool/providers/my-provider`)
-- `GCP_SERVICE_ACCOUNT` = service account email to impersonate  
-  (example: `my-sa@my-project.iam.gserviceaccount.com`)
-
-*Option B – Service Account Key (fallback):*
-- `GCP_SA_KEY` = full JSON of your GCP service account key  
-  *(only used when `GCP_WORKLOAD_IDENTITY_PROVIDER` is not set)*
+**Authentication Secret**
+- `GCP_SA_KEY` = full JSON of your GCP service account key
 
 **Infrastructure Secrets**
 - `GCP_PROJECT_ID` = your Google Cloud project ID
-- `GCP_REGION` = Cloud Run region (example: `us-central1`)
-- `CLOUD_RUN_SERVICE` = Cloud Run service name
+- `GCP_REGION` = Cloud Run region (optional, default: `asia-south1`)
+- `CLOUD_RUN_SERVICE` = Cloud Run service name (optional, default: `finance-prod`)
+- `GCP_ARTIFACT_REGISTRY_REPOSITORY` = Artifact Registry repo name (optional, default: `finance-prod`)
 
 **Application Runtime Secrets**
 - `APP_SECRET_KEY` = JWT secret key (minimum 32 characters)
@@ -209,8 +204,6 @@ If omitted, app defaults are used where defaults exist.
 - `APP_ALGORITHM`
 - `APP_MONGODB_DB`
 - `APP_CORS_ORIGINS` (must be JSON array string, example: `["https://your-frontend-domain.com"]`)
-- `CLOUD_RUN_ALLOW_UNAUTHENTICATED` = set to `true` to make the Cloud Run service publicly accessible  
-  ⚠️ **Security note:** By default the service is deployed without `--allow-unauthenticated`, meaning only authenticated callers (via IAM) can invoke it. Set this secret to `true` only if you intentionally want the service to be publicly reachable without authentication. To further restrict access after deployment, configure [Cloud Run ingress settings](https://cloud.google.com/run/docs/securing/ingress) or [IAM policies](https://cloud.google.com/run/docs/securing/managing-access).
 
 ### 3) Push to `main`
 
