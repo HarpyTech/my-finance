@@ -7,11 +7,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: cloud-run-deploy-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
+  id-token: write  # Required for Workload Identity Federation
 
 jobs:
   deploy:
@@ -21,7 +22,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to Google Cloud (Service Account Key)
+        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER == '' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -45,45 +54,59 @@ jobs:
           APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
-          cat > .cloudrun.env.yaml <<EOF
-          SECRET_KEY: "${APP_SECRET_KEY}"
-          DEFAULT_LOGIN_PASSWORD: "${APP_DEFAULT_LOGIN_PASSWORD}"
-          MONGODB_URI: "${APP_MONGODB_URI}"
-          BUILD_VERSION: "${GITHUB_SHA}"
-          EOF
+          python - << 'PY'
+          import os
+          import sys
+          import yaml
 
-          if [ -n "${APP_PROJECT_NAME}" ]; then
-            echo "PROJECT_NAME: \"${APP_PROJECT_NAME}\"" >> .cloudrun.env.yaml
-          fi
+          # Validate required secrets are present and meet minimum requirements
+          required = {
+              "APP_SECRET_KEY": os.getenv("APP_SECRET_KEY", ""),
+              "APP_DEFAULT_LOGIN_PASSWORD": os.getenv("APP_DEFAULT_LOGIN_PASSWORD", ""),
+              "APP_MONGODB_URI": os.getenv("APP_MONGODB_URI", ""),
+          }
+          missing = [k for k, v in required.items() if not v]
+          if missing:
+              print(f"ERROR: Required secrets are not set: {', '.join(missing)}", file=sys.stderr)
+              sys.exit(1)
+          if len(required["APP_SECRET_KEY"]) < 32:
+              print("ERROR: APP_SECRET_KEY must be at least 32 characters long.", file=sys.stderr)
+              sys.exit(1)
 
-          if [ -n "${APP_API_V1_STR}" ]; then
-            echo "API_V1_STR: \"${APP_API_V1_STR}\"" >> .cloudrun.env.yaml
-          fi
+          data = {}
 
-          if [ -n "${APP_ACCESS_TOKEN_EXPIRE_MINUTES}" ]; then
-            echo "ACCESS_TOKEN_EXPIRE_MINUTES: \"${APP_ACCESS_TOKEN_EXPIRE_MINUTES}\"" >> .cloudrun.env.yaml
-          fi
+          def add_env(yaml_key, env_var):
+              value = os.getenv(env_var)
+              if value:
+                  data[yaml_key] = value
 
-          if [ -n "${APP_ALGORITHM}" ]; then
-            echo "ALGORITHM: \"${APP_ALGORITHM}\"" >> .cloudrun.env.yaml
-          fi
+          add_env("SECRET_KEY", "APP_SECRET_KEY")
+          add_env("DEFAULT_LOGIN_PASSWORD", "APP_DEFAULT_LOGIN_PASSWORD")
+          add_env("MONGODB_URI", "APP_MONGODB_URI")
+          data["BUILD_VERSION"] = os.getenv("GITHUB_SHA", "")
+          add_env("PROJECT_NAME", "APP_PROJECT_NAME")
+          add_env("API_V1_STR", "APP_API_V1_STR")
+          add_env("ACCESS_TOKEN_EXPIRE_MINUTES", "APP_ACCESS_TOKEN_EXPIRE_MINUTES")
+          add_env("ALGORITHM", "APP_ALGORITHM")
+          add_env("CORS_ORIGINS", "APP_CORS_ORIGINS")
+          add_env("MONGODB_DB", "APP_MONGODB_DB")
 
-          if [ -n "${APP_CORS_ORIGINS}" ]; then
-            # For Pydantic list[str], provide JSON array format.
-            echo "CORS_ORIGINS: '${APP_CORS_ORIGINS}'" >> .cloudrun.env.yaml
-          fi
-
-          if [ -n "${APP_MONGODB_DB}" ]; then
-            echo "MONGODB_DB: \"${APP_MONGODB_DB}\"" >> .cloudrun.env.yaml
-          fi
+          with open(".cloudrun.env.yaml", "w", encoding="utf-8") as f:
+              yaml.safe_dump(data, f)
+          PY
 
       - name: Deploy to Cloud Run
         run: |
+          ALLOW_FLAG=""
+          if [ "${{ secrets.CLOUD_RUN_ALLOW_UNAUTHENTICATED }}" = "true" ]; then
+            ALLOW_FLAG="--allow-unauthenticated"
+          fi
+
           gcloud run deploy "${{ secrets.CLOUD_RUN_SERVICE }}" \
             --source . \
             --region "${{ secrets.GCP_REGION }}" \
             --platform managed \
-            --allow-unauthenticated \
+            ${ALLOW_FLAG} \
             --port 8000 \
             --env-vars-file .cloudrun.env.yaml \
             --quiet
