@@ -165,6 +165,44 @@ See [SECRET-MANAGEMENT.md](./SECRET-MANAGEMENT.md) for comprehensive setup instr
 
 ---
 
+## ☁️ Auto Deploy to Google Cloud Run (GitHub Actions)
+
+This repository includes a workflow at `.github/workflows/deploy-cloud-run.yml`.
+
+It deploys automatically when code is pushed to `main` (and can also be run manually with `workflow_dispatch`).
+
+### 1) Add Required GitHub Secrets
+
+Add these in GitHub: **Settings -> Secrets and variables -> Actions -> Secrets**.
+
+**Deployment Secrets**
+- `GCP_SA_KEY` = full JSON of your GCP service account key
+- `GCP_PROJECT_ID` = your Google Cloud project ID
+- `GCP_REGION` = Cloud Run region (example: `us-central1`)
+- `CLOUD_RUN_SERVICE` = Cloud Run service name
+
+**Application Runtime Secrets**
+- `APP_SECRET_KEY` = JWT secret key (minimum 32 characters)
+- `APP_DEFAULT_LOGIN_PASSWORD` = initial/default login password
+- `APP_MONGODB_URI` = MongoDB connection string
+
+### 2) Optional GitHub Secrets (App Overrides)
+
+If omitted, app defaults are used where defaults exist.
+
+- `APP_PROJECT_NAME`
+- `APP_API_V1_STR`
+- `APP_ACCESS_TOKEN_EXPIRE_MINUTES`
+- `APP_ALGORITHM`
+- `APP_MONGODB_DB`
+- `APP_CORS_ORIGINS` (must be JSON array string, example: `["https://your-frontend-domain.com"]`)
+
+### 3) Push to `main`
+
+After setting the secrets, push to `main` and the workflow will build and deploy to Cloud Run.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! To contribute:

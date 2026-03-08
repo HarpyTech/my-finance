@@ -1,0 +1,85 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Build Cloud Run env file
+        shell: bash
+        env:
+          APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
+          APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+          APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.APP_ACCESS_TOKEN_EXPIRE_MINUTES }}
+          APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
+          APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
+          APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
+          APP_MONGODB_URI: ${{ secrets.APP_MONGODB_URI }}
+          APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cat > .cloudrun.env.yaml <<EOF
+          SECRET_KEY: "${APP_SECRET_KEY}"
+          DEFAULT_LOGIN_PASSWORD: "${APP_DEFAULT_LOGIN_PASSWORD}"
+          MONGODB_URI: "${APP_MONGODB_URI}"
+          BUILD_VERSION: "${GITHUB_SHA}"
+          EOF
+
+          if [ -n "${APP_PROJECT_NAME}" ]; then
+            echo "PROJECT_NAME: \"${APP_PROJECT_NAME}\"" >> .cloudrun.env.yaml
+          fi
+
+          if [ -n "${APP_API_V1_STR}" ]; then
+            echo "API_V1_STR: \"${APP_API_V1_STR}\"" >> .cloudrun.env.yaml
+          fi
+
+          if [ -n "${APP_ACCESS_TOKEN_EXPIRE_MINUTES}" ]; then
+            echo "ACCESS_TOKEN_EXPIRE_MINUTES: \"${APP_ACCESS_TOKEN_EXPIRE_MINUTES}\"" >> .cloudrun.env.yaml
+          fi
+
+          if [ -n "${APP_ALGORITHM}" ]; then
+            echo "ALGORITHM: \"${APP_ALGORITHM}\"" >> .cloudrun.env.yaml
+          fi
+
+          if [ -n "${APP_CORS_ORIGINS}" ]; then
+            # For Pydantic list[str], provide JSON array format.
+            echo "CORS_ORIGINS: '${APP_CORS_ORIGINS}'" >> .cloudrun.env.yaml
+          fi
+
+          if [ -n "${APP_MONGODB_DB}" ]; then
+            echo "MONGODB_DB: \"${APP_MONGODB_DB}\"" >> .cloudrun.env.yaml
+          fi
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ secrets.CLOUD_RUN_SERVICE }}" \
+            --source . \
+            --region "${{ secrets.GCP_REGION }}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8000 \
+            --env-vars-file .cloudrun.env.yaml \
+            --quiet
