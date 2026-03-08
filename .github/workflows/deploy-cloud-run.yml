@@ -12,7 +12,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write  # Required for Workload Identity Federation
 
 jobs:
   deploy:
@@ -22,15 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud (Workload Identity Federation)
-        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
       - name: Authenticate to Google Cloud (Service Account Key)
-        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER == '' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -43,12 +34,12 @@ jobs:
       - name: Build Cloud Run env file
         shell: bash
         env:
-          APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
-          APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
+        #   APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
+        #   APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
           APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
           APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.APP_ACCESS_TOKEN_EXPIRE_MINUTES }}
-          APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
-          APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
+        #   APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
+        #   APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
           APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
           APP_MONGODB_URI: ${{ secrets.APP_MONGODB_URI }}
           APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
@@ -97,16 +88,11 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
-          ALLOW_FLAG=""
-          if [ "${{ secrets.CLOUD_RUN_ALLOW_UNAUTHENTICATED }}" = "true" ]; then
-            ALLOW_FLAG="--allow-unauthenticated"
-          fi
-
           gcloud run deploy "${{ secrets.CLOUD_RUN_SERVICE }}" \
             --source . \
             --region "${{ secrets.GCP_REGION }}" \
             --platform managed \
-            ${ALLOW_FLAG} \
+            --allow-unauthenticated \
             --port 8000 \
             --env-vars-file .cloudrun.env.yaml \
             --quiet
