@@ -1,14 +1,51 @@
+import logging
+
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
 from pymongo.errors import OperationFailure, PyMongoError
-import logging
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 _client: MongoClient | None = None
+_resolved_db_name: str | None = None
+
+
+def _summarize_db_error(exc: Exception) -> str:
+    """Return a safe, concise DB error summary without query details."""
+    if isinstance(exc, OperationFailure):
+        code = getattr(exc, "code", "unknown")
+        code_name = getattr(exc, "codeName", "OperationFailure")
+        return f"{code_name} (code={code})"
+    return type(exc).__name__
+
+
+def _resolve_database_name(client: MongoClient) -> str:
+    """Resolve an accessible application DB name."""
+    candidates: list[str] = [settings.MONGODB_DB]
+    if settings.MONGODB_DB != "my_finance":
+        candidates.append("my_finance")
+
+    for db_name in candidates:
+        try:
+            # Read check to verify this identity can use the DB.
+            client[db_name]["users"].find_one({}, {"_id": 1})
+            logger.info(f"Using MongoDB database: {db_name}")
+            return db_name
+        except OperationFailure as exc:
+            logger.warning(
+                "No read access to database '%s': %s",
+                db_name,
+                _summarize_db_error(exc),
+            )
+            continue
+
+    raise RuntimeError(
+        "MongoDB user is not authorized for configured databases. "
+        "Grant readWrite on target DB in Atlas and set MONGODB_DB."
+    )
 
 
 def _safe_create_indexes(collection: Collection, index_specs: list[dict]) -> None:
@@ -25,12 +62,12 @@ def _safe_create_indexes(collection: Collection, index_specs: list[dict]) -> Non
         except OperationFailure as exc:
             logger.warning(
                 "Skipping index creation due to DB permissions: %s",
-                str(exc),
+                _summarize_db_error(exc),
             )
         except PyMongoError as exc:
             logger.warning(
                 "Skipping index creation due to DB error: %s",
-                str(exc),
+                _summarize_db_error(exc),
             )
 
 
@@ -49,7 +86,8 @@ def get_mongo_client() -> MongoClient:
             logger.info("Successfully connected to MongoDB")
         except PyMongoError as exc:
             logger.error(
-                f"Failed to connect to MongoDB: {str(exc)}",
+                "Failed to connect to MongoDB: %s",
+                _summarize_db_error(exc),
                 exc_info=True,
             )
             raise
@@ -58,12 +96,16 @@ def get_mongo_client() -> MongoClient:
 
 def get_database() -> Database:
     """Get the application database"""
+    global _resolved_db_name
     try:
-        db = get_mongo_client()[settings.MONGODB_DB]
-        logger.debug(f"Accessing database: {settings.MONGODB_DB}")
+        client = get_mongo_client()
+        if _resolved_db_name is None:
+            _resolved_db_name = _resolve_database_name(client)
+        db = client[_resolved_db_name]
+        logger.debug(f"Accessing database: {_resolved_db_name}")
         return db
-    except Exception as exc:
-        logger.error(f"Failed to access database: {str(exc)}", exc_info=True)
+    except Exception:
+        logger.error("Failed to access database", exc_info=True)
         raise
 
 
@@ -78,15 +120,12 @@ def get_users_collection() -> Collection:
         )
         logger.debug("Users collection accessed with indexes ensured")
         return collection
-    except PyMongoError as exc:
-        logger.error(
-            f"Failed to access users collection: {str(exc)}",
-            exc_info=True,
-        )
+    except PyMongoError:
+        logger.error("Failed to access users collection", exc_info=True)
         raise
-    except Exception as exc:
+    except Exception:
         logger.error(
-            f"Unexpected error accessing users collection: {str(exc)}",
+            "Unexpected error accessing users collection",
             exc_info=True,
         )
         raise
@@ -112,15 +151,12 @@ def get_expenses_collection() -> Collection:
         )
         logger.debug("Expenses collection accessed with indexes ensured")
         return collection
-    except PyMongoError as exc:
-        logger.error(
-            f"Failed to access expenses collection: {str(exc)}",
-            exc_info=True,
-        )
+    except PyMongoError:
+        logger.error("Failed to access expenses collection", exc_info=True)
         raise
-    except Exception as exc:
+    except Exception:
         logger.error(
-            f"Unexpected error accessing expenses collection: " f"{str(exc)}",
+            "Unexpected error accessing expenses collection",
             exc_info=True,
         )
         raise
@@ -133,10 +169,14 @@ def ping_database() -> bool:
         logger.debug("Database ping successful")
         return True
     except PyMongoError as exc:
-        logger.warning(f"Database ping failed: {str(exc)}")
+        logger.warning(
+            "Database ping failed: %s",
+            _summarize_db_error(exc),
+        )
         return False
-    except Exception as exc:
+    except Exception:
         logger.error(
-            f"Unexpected error during database ping: {str(exc)}", exc_info=True
+            "Unexpected error during database ping",
+            exc_info=True,
         )
         return False

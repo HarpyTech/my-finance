@@ -1,10 +1,15 @@
-from datetime import date
+from datetime import date, datetime, time
 from pymongo.errors import PyMongoError
 import logging
 
 from app.db.mongo import get_expenses_collection
 
 logger = logging.getLogger(__name__)
+
+
+def _as_mongo_datetime(value: date) -> datetime:
+    """Convert a date to a MongoDB-storable datetime at start of day."""
+    return datetime.combine(value, time.min)
 
 
 def add_expense(
@@ -31,7 +36,7 @@ def add_expense(
             "bill_type": bill_type.strip().lower(),
             "vendor": vendor.strip(),
             "description": description.strip(),
-            "expense_date": expense_date,
+            "expense_date": _as_mongo_datetime(expense_date),
             "line_items": line_items or [],
         }
         result = expenses.insert_one(doc)
@@ -104,8 +109,8 @@ def monthly_summary(username: str, year: int):
     logger.debug(f"Fetching monthly summary for year {year}")
     try:
         expenses = get_expenses_collection()
-        start = date(year, 1, 1)
-        end = date(year + 1, 1, 1)
+        start = _as_mongo_datetime(date(year, 1, 1))
+        end = _as_mongo_datetime(date(year + 1, 1, 1))
         pipeline = [
             {
                 "$match": {
@@ -200,12 +205,14 @@ def category_summary(username: str, year: int | None = None, month: int | None =
         match: dict = {"username": username}
         if year is not None:
             start_month = month if month is not None else 1
-            end_month = month if month is not None else 12
-            start = date(year, start_month, 1)
+            start = _as_mongo_datetime(date(year, start_month, 1))
             if month is None:
-                end = date(year + 1, 1, 1)
+                end = _as_mongo_datetime(date(year + 1, 1, 1))
             else:
-                end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+                end_date = (
+                    date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+                )
+                end = _as_mongo_datetime(end_date)
             match["expense_date"] = {"$gte": start, "$lt": end}
 
         pipeline = [
