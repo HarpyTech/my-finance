@@ -32,6 +32,10 @@ export default function DashboardPage() {
   const [yearly, setYearly] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
   const [error, setError] = useState('');
+  const [aiInputText, setAiInputText] = useState('');
+  const [aiImageFile, setAiImageFile] = useState(null);
+  const [extracting, setExtracting] = useState(false);
+  const [lastExtracted, setLastExtracted] = useState(null);
 
   const currentYear = new Date().getFullYear();
 
@@ -85,6 +89,41 @@ export default function DashboardPage() {
   async function handleLogout() {
     await logout();
     navigate('/login');
+  }
+
+  async function addExpenseFromAi(event) {
+    event.preventDefault();
+    setError('');
+
+    if (!aiInputText.trim() && !aiImageFile) {
+      setError('Provide text input or upload an image for extraction.');
+      return;
+    }
+
+    try {
+      setExtracting(true);
+      const formData = new FormData();
+      if (aiInputText.trim()) {
+        formData.append('text_input', aiInputText.trim());
+      }
+      if (aiImageFile) {
+        formData.append('image', aiImageFile);
+      }
+
+      const response = await apiRequest('/expenses/extract-and-create', {
+        method: 'POST',
+        body: formData,
+      });
+
+      setLastExtracted(response.extracted || null);
+      setAiInputText('');
+      setAiImageFile(null);
+      await loadData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExtracting(false);
+    }
   }
 
   const totalSpend = useMemo(
@@ -170,6 +209,38 @@ export default function DashboardPage() {
         </article>
 
         <article className="panel">
+          <h2>Add Expense From Text or Image</h2>
+          <form onSubmit={addExpenseFromAi} className="stack-form">
+            <label>
+              Text Input
+              <textarea
+                rows={4}
+                placeholder="Paste receipt text or describe the expense"
+                value={aiInputText}
+                onChange={(e) => setAiInputText(e.target.value)}
+              />
+            </label>
+            <label>
+              Receipt Image
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setAiImageFile(e.target.files?.[0] || null)}
+              />
+            </label>
+            <button type="submit" disabled={extracting}>
+              {extracting ? 'Extracting...' : 'Extract + Save Expense'}
+            </button>
+          </form>
+          {lastExtracted ? (
+            <div className="extract-output">
+              <h3>Last Extracted JSON</h3>
+              <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
+            </div>
+          ) : null}
+        </article>
+
+        <article className="panel">
           <h2>Monthly Trend ({currentYear})</h2>
           <div className="chart-box">
             <ResponsiveContainer width="100%" height={260}>
@@ -222,6 +293,7 @@ export default function DashboardPage() {
                 <th>ID</th>
                 <th>Date</th>
                 <th>Category</th>
+                <th>Vendor</th>
                 <th>Description</th>
                 <th>Amount</th>
               </tr>
@@ -232,6 +304,7 @@ export default function DashboardPage() {
                   <td>{item.id}</td>
                   <td>{item.expense_date}</td>
                   <td>{item.category}</td>
+                  <td>{item.vendor || '-'}</td>
                   <td>{item.description || '-'}</td>
                   <td>${Number(item.amount).toFixed(2)}</td>
                 </tr>

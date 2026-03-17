@@ -51,12 +51,18 @@ label {
 }
 
 input,
+textarea,
 select,
 button {
   font: inherit;
   border-radius: 10px;
   border: 1px solid var(--line);
   padding: 10px 12px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 96px;
 }
 
 button {
@@ -126,6 +132,22 @@ button:disabled {
 
 .table-wrap {
   overflow: auto;
+}
+
+.extract-output {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.extract-output pre {
+  margin: 0;
+  background: #f8faff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  overflow: auto;
+  max-height: 220px;
 }
 
 table {
