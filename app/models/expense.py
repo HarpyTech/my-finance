@@ -40,6 +40,7 @@ class ExpenseCreate(BaseModel):
     category: str = Field(default="other", min_length=2, max_length=64)
     bill_type: BillType = "other"
     input_type: ExpenseInputType = "manual"
+    invoice_number: str = Field(default="", max_length=64)
     vendor: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=255)
     expense_date: date
@@ -53,6 +54,7 @@ class ExpenseItem(BaseModel):
     category: str
     bill_type: BillType
     input_type: ExpenseInputType
+    invoice_number: str
     vendor: str
     description: str
     expense_date: date

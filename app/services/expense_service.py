@@ -1,4 +1,5 @@
 from datetime import date, datetime, time
+import re
 from pymongo.errors import PyMongoError
 import logging
 
@@ -21,6 +22,7 @@ def add_expense(
     category: str,
     bill_type: str,
     input_type: str,
+    invoice_number: str,
     vendor: str,
     description: str,
     expense_date: date,
@@ -38,6 +40,10 @@ def add_expense(
 
         normalized_tax = _normalize_tax_details(tax_details)
         normalized_items = line_items or []
+        normalized_invoice_number = _normalize_invoice_number(
+            invoice_number,
+            description,
+        )
 
         doc = {
             "username": username,
@@ -45,6 +51,7 @@ def add_expense(
             "category": category.strip().lower(),
             "bill_type": bill_type.strip().lower(),
             "input_type": input_type.strip().lower(),
+            "invoice_number": normalized_invoice_number,
             "vendor": vendor.strip(),
             "description": description.strip(),
             "expense_date": _as_mongo_datetime(expense_date),
@@ -78,6 +85,7 @@ def add_expense(
             "category": doc["category"],
             "bill_type": doc["bill_type"],
             "input_type": doc["input_type"],
+            "invoice_number": doc["invoice_number"],
             "vendor": doc["vendor"],
             "description": doc["description"],
             "expense_date": expense_date.isoformat(),
@@ -86,10 +94,15 @@ def add_expense(
         }
     except PyMongoError as exc:
         logger.error(
-            ("Database error while adding expense for user " f"{username}: {str(exc)}"),
+            (
+                "Database error while adding expense for user "
+                f"{username}: {str(exc)}"
+            ),
             exc_info=True,
         )
-        raise RuntimeError("Failed to store expense due to database error") from exc
+        raise RuntimeError(
+            "Failed to store expense due to database error"
+        ) from exc
     except Exception as exc:
         logger.error(
             (
@@ -107,7 +120,9 @@ def list_expenses(username: str):
     try:
         expenses = get_expenses_collection()
         expense_line_items = get_expense_line_items_collection()
-        docs = list(expenses.find({"username": username}).sort("expense_date", -1))
+        docs = list(
+            expenses.find({"username": username}).sort("expense_date", -1)
+        )
 
         expense_ids = [str(doc["_id"]) for doc in docs]
         line_items_map: dict[str, list[dict]] = {
@@ -150,6 +165,7 @@ def list_expenses(username: str):
                 "category": doc.get("category", "other"),
                 "bill_type": doc.get("bill_type", "other"),
                 "input_type": doc.get("input_type", "manual"),
+                "invoice_number": doc.get("invoice_number", ""),
                 "vendor": doc.get("vendor", ""),
                 "description": doc.get("description", ""),
                 "expense_date": doc["expense_date"].isoformat(),
@@ -165,7 +181,9 @@ def list_expenses(username: str):
             f"Database error while fetching expenses: {str(exc)}",
             exc_info=True,
         )
-        raise RuntimeError("Failed to fetch expenses due to database error") from exc
+        raise RuntimeError(
+            "Failed to fetch expenses due to database error"
+        ) from exc
     except Exception as exc:
         logger.error(
             (
@@ -212,6 +230,48 @@ def _normalize_tax_details(raw_tax_details: dict | None) -> dict:
     return {key: round(value, 2) for key, value in normalized.items()}
 
 
+def _normalize_invoice_number(
+    raw_invoice_number: str | None,
+    description: str | None,
+) -> str:
+    """Normalize invoice number, or derive it from free-form text."""
+    if raw_invoice_number and raw_invoice_number.strip():
+        return _sanitize_invoice_number(raw_invoice_number)
+
+    if description:
+        extracted = _extract_invoice_number_from_text(description)
+        if extracted:
+            return extracted
+
+    return ""
+
+
+def _sanitize_invoice_number(value: str) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    cleaned = re.sub(r"[^A-Za-z0-9\-/]", "", cleaned)
+    return cleaned[:64]
+
+
+def _extract_invoice_number_from_text(text: str) -> str:
+    patterns = [
+        (
+            r"(?:invoice|inv|bill|receipt)\s*(?:no|number|#|:)?\s*"
+            r"([A-Za-z0-9\-/]{3,64})"
+        ),
+        r"\b([A-Za-z]{2,6}[-/][A-Za-z0-9\-/]{2,58})\b",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if not match:
+            continue
+        candidate = _sanitize_invoice_number(match.group(1))
+        if candidate:
+            return candidate
+
+    return ""
+
+
 def _float_or_zero(value) -> float:
     try:
         return max(0.0, float(value or 0))
@@ -241,9 +301,14 @@ def monthly_summary(username: str, year: int):
             },
         ]
         result = list(expenses.aggregate(pipeline))
-        totals = {row["_id"]["month"]: round(float(row["total"]), 2) for row in result}
+        totals = {
+            row["_id"]["month"]: round(float(row["total"]), 2)
+            for row in result
+        }
 
-        summary = [{"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)]
+        summary = [
+            {"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)
+        ]
         total_year = sum(totals.values())
         logger.info(
             f"Monthly summary for year {year}: "
@@ -329,7 +394,9 @@ def category_summary(
                 end = _as_mongo_datetime(date(year + 1, 1, 1))
             else:
                 end_date = (
-                    date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+                    date(year + 1, 1, 1)
+                    if month == 12
+                    else date(year, month + 1, 1)
                 )
                 end = _as_mongo_datetime(end_date)
             match["expense_date"] = {"$gte": start, "$lt": end}
@@ -352,7 +419,10 @@ def category_summary(
             }
             for row in result
         ]
-        logger.info(f"Category summary ({period}): " f"{len(summary)} categories")
+        logger.info(
+            f"Category summary ({period}): "
+            f"{len(summary)} categories"
+        )
         return summary
     except PyMongoError as exc:
         logger.error(

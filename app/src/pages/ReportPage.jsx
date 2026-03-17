@@ -200,6 +200,7 @@ export default function ReportPage() {
                   <th>Date</th>
                   <th>Category</th>
                   <th>Input Type</th>
+                  <th>Invoice No.</th>
                   <th>Vendor</th>
                   <th>Description</th>
                   <th>Line Items</th>
@@ -214,6 +215,7 @@ export default function ReportPage() {
                       <td>{String(item.expense_date || '').slice(0, 10)}</td>
                       <td>{toTitleCase(item.category)}</td>
                       <td>{toTitleCase(item.input_type || 'manual')}</td>
+                      <td>{item.invoice_number || '-'}</td>
                       <td>{item.vendor || '-'}</td>
                       <td>{item.description || '-'}</td>
                       <td>{item.line_items?.length || 0}</td>
@@ -222,7 +224,7 @@ export default function ReportPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="empty-state-cell">
+                    <td colSpan={9} className="empty-state-cell">
                       No historical expenses matched the selected filters.
                     </td>
                   </tr>
