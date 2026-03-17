@@ -27,8 +27,10 @@ export default function DashboardPage() {
   const [categoryData, setCategoryData] = useState([]);
   const [error, setError] = useState('');
   const [cameraImageFile, setCameraImageFile] = useState(null);
+  const [cameraPreviewUrl, setCameraPreviewUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
+  const [successToast, setSuccessToast] = useState('');
 
   const currentYear = new Date().getFullYear();
 
@@ -52,6 +54,34 @@ export default function DashboardPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!cameraImageFile) {
+      setCameraPreviewUrl('');
+      return undefined;
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(cameraImageFile);
+    setCameraPreviewUrl(nextPreviewUrl);
+
+    return () => {
+      URL.revokeObjectURL(nextPreviewUrl);
+    };
+  }, [cameraImageFile]);
+
+  useEffect(() => {
+    if (!successToast) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessToast('');
+    }, 2600);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [successToast]);
 
   async function handleLogout() {
     await logout();
@@ -80,6 +110,7 @@ export default function DashboardPage() {
 
       setLastExtracted(response.extracted || null);
       setCameraImageFile(null);
+      setSuccessToast('Expense captured and saved successfully.');
       await loadData();
     } catch (err) {
       setError(err.message);
@@ -95,6 +126,12 @@ export default function DashboardPage() {
 
   return (
     <main className="dashboard-layout">
+      {successToast ? (
+        <div className="success-toast" role="status" aria-live="polite">
+          {successToast}
+        </div>
+      ) : null}
+
       <header className="dashboard-header">
         <div>
           <h1>My Finance Dashboard</h1>
@@ -140,6 +177,25 @@ export default function DashboardPage() {
                   onChange={(e) => setCameraImageFile(e.target.files?.[0] || null)}
                 />
               </label>
+              {cameraPreviewUrl ? (
+                <div className="camera-preview-card">
+                  <img
+                    src={cameraPreviewUrl}
+                    alt="Captured receipt preview"
+                    className="camera-preview-image"
+                  />
+                  <div className="camera-preview-actions">
+                    <span className="help-text">Receipt preview ready for submission.</span>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setCameraImageFile(null)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <button type="submit" disabled={extracting}>
                 {extracting ? 'Extracting...' : 'Capture + Save Expense'}
               </button>
