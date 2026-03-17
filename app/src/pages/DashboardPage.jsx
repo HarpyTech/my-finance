@@ -13,25 +13,24 @@ import {
   YAxis,
 } from 'recharts';
 import { useAuth } from '../auth/AuthContext';
+import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
-
-const CATEGORIES = ['Food', 'Travel', 'Utilities', 'Shopping', 'Health', 'Other'];
 
 export default function DashboardPage() {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
+  const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 
-  const [expenseForm, setExpenseForm] = useState({
-    amount: '',
-    category: CATEGORIES[0],
-    description: '',
-    expense_date: new Date().toISOString().slice(0, 10),
-  });
   const [expenses, setExpenses] = useState([]);
   const [monthly, setMonthly] = useState([]);
   const [yearly, setYearly] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
   const [error, setError] = useState('');
+  const [cameraImageFile, setCameraImageFile] = useState(null);
+  const [cameraPreviewUrl, setCameraPreviewUrl] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [lastExtracted, setLastExtracted] = useState(null);
+  const [successToast, setSuccessToast] = useState('');
 
   const currentYear = new Date().getFullYear();
 
@@ -56,35 +55,68 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
-  async function addExpense(event) {
-    event.preventDefault();
-    setError('');
-
-    try {
-      await apiRequest('/expenses', {
-        method: 'POST',
-        body: JSON.stringify({
-          amount: Number(expenseForm.amount),
-          category: expenseForm.category,
-          description: expenseForm.description,
-          expense_date: expenseForm.expense_date,
-        }),
-      });
-
-      setExpenseForm((prev) => ({
-        ...prev,
-        amount: '',
-        description: '',
-      }));
-      await loadData();
-    } catch (err) {
-      setError(err.message);
+  useEffect(() => {
+    if (!cameraImageFile) {
+      setCameraPreviewUrl('');
+      return undefined;
     }
-  }
+
+    const nextPreviewUrl = URL.createObjectURL(cameraImageFile);
+    setCameraPreviewUrl(nextPreviewUrl);
+
+    return () => {
+      URL.revokeObjectURL(nextPreviewUrl);
+    };
+  }, [cameraImageFile]);
+
+  useEffect(() => {
+    if (!successToast) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessToast('');
+    }, 2600);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [successToast]);
 
   async function handleLogout() {
     await logout();
     navigate('/login');
+  }
+
+  async function addExpenseFromCamera(event) {
+    event.preventDefault();
+    setError('');
+
+    if (!cameraImageFile) {
+      setError('Capture a receipt image to add an expense from the dashboard.');
+      return;
+    }
+
+    try {
+      setExtracting(true);
+      const formData = new FormData();
+      formData.append('image', cameraImageFile);
+      formData.append('input_type', 'camera');
+
+      const response = await apiRequest('/expenses/extract-and-create', {
+        method: 'POST',
+        body: formData,
+      });
+
+      setLastExtracted(response.extracted || null);
+      setCameraImageFile(null);
+      setSuccessToast('Expense captured and saved successfully.');
+      await loadData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExtracting(false);
+    }
   }
 
   const totalSpend = useMemo(
@@ -94,14 +126,20 @@ export default function DashboardPage() {
 
   return (
     <main className="dashboard-layout">
+      {successToast ? (
+        <div className="success-toast" role="status" aria-live="polite">
+          {successToast}
+        </div>
+      ) : null}
+
       <header className="dashboard-header">
         <div>
           <h1>My Finance Dashboard</h1>
-          <p>
-            Logged in as <strong>{session.user}</strong> ({session.role})
-          </p>
         </div>
-        <button onClick={handleLogout}>Logout</button>
+        <div className="header-actions">
+          <TopNavigation />
+          <button onClick={handleLogout}>Logout</button>
+        </div>
       </header>
 
       <section className="stats-grid">
@@ -121,51 +159,61 @@ export default function DashboardPage() {
 
       <section className="panel-grid">
         <article className="panel">
-          <h2>Add Daily Expense</h2>
-          <form onSubmit={addExpense} className="stack-form">
-            <label>
-              Amount
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                required
-                value={expenseForm.amount}
-                onChange={(e) => setExpenseForm((prev) => ({ ...prev, amount: e.target.value }))}
-              />
-            </label>
-            <label>
-              Category
-              <select
-                value={expenseForm.category}
-                onChange={(e) => setExpenseForm((prev) => ({ ...prev, category: e.target.value }))}
-              >
-                {CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Date
-              <input
-                type="date"
-                required
-                value={expenseForm.expense_date}
-                onChange={(e) => setExpenseForm((prev) => ({ ...prev, expense_date: e.target.value }))}
-              />
-            </label>
-            <label>
-              Note
-              <input
-                type="text"
-                value={expenseForm.description}
-                onChange={(e) => setExpenseForm((prev) => ({ ...prev, description: e.target.value }))}
-              />
-            </label>
-            <button type="submit">Save Expense</button>
-          </form>
+          <h2>Quick Add Expense</h2>
+          <p className="help-text dashboard-card-copy">
+            Use fast receipt capture here, or open the full Add Expense page for manual and text-based entry.
+          </p>
+          {isMobileDevice ? (
+            <form onSubmit={addExpenseFromCamera} className="stack-form quick-capture-form">
+              <label>
+                Capture Receipt With Camera
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => setCameraImageFile(e.target.files?.[0] || null)}
+                />
+              </label>
+              {cameraPreviewUrl ? (
+                <div className="camera-preview-card">
+                  <img
+                    src={cameraPreviewUrl}
+                    alt="Captured receipt preview"
+                    className="camera-preview-image"
+                  />
+                  <div className="camera-preview-actions">
+                    <span className="help-text">Receipt preview ready for submission.</span>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setCameraImageFile(null)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <button type="submit" disabled={extracting}>
+                {extracting ? 'Extracting...' : 'Capture + Save Expense'}
+              </button>
+            </form>
+          ) : (
+            <div className="dashboard-cta-block">
+              <p className="help-text">
+                Camera capture opens directly on mobile. Use the Add Expense page on desktop for full entry options.
+              </p>
+              <button type="button" onClick={() => navigate('/add-expense')}>
+                Open Add Expense
+              </button>
+            </div>
+          )}
+
+          {lastExtracted ? (
+            <div className="extract-output">
+              <h3>Last Extracted JSON</h3>
+              <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
+            </div>
+          ) : null}
           {error ? <p className="error-text">{error}</p> : null}
         </article>
 
@@ -213,33 +261,6 @@ export default function DashboardPage() {
         </article>
       </section>
 
-      <section className="panel">
-        <h2>Recent Expenses</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Date</th>
-                <th>Category</th>
-                <th>Description</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.slice().reverse().map((item) => (
-                <tr key={item.id}>
-                  <td>{item.id}</td>
-                  <td>{item.expense_date}</td>
-                  <td>{item.category}</td>
-                  <td>{item.description || '-'}</td>
-                  <td>${Number(item.amount).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </main>
   );
 }

@@ -48,7 +48,10 @@ def _resolve_database_name(client: MongoClient) -> str:
     )
 
 
-def _safe_create_indexes(collection: Collection, index_specs: list[dict]) -> None:
+def _safe_create_indexes(
+    collection: Collection,
+    index_specs: list[dict],
+) -> None:
     """Create indexes if allowed; do not fail requests on permission issues."""
     for spec in index_specs:
         try:
@@ -157,6 +160,39 @@ def get_expenses_collection() -> Collection:
     except Exception:
         logger.error(
             "Unexpected error accessing expenses collection",
+            exc_info=True,
+        )
+        raise
+
+
+def get_expense_line_items_collection() -> Collection:
+    """Get dedicated expense line items collection with indexes."""
+    try:
+        collection = get_database()["expense_line_items"]
+        _safe_create_indexes(
+            collection,
+            [
+                {
+                    "kind": "compound",
+                    "fields": [("expense_id", 1), ("username", 1)],
+                },
+                {
+                    "kind": "compound",
+                    "fields": [("username", 1), ("created_at", -1)],
+                },
+            ],
+        )
+        logger.debug("Expense line items collection accessed with indexes ensured")
+        return collection
+    except PyMongoError:
+        logger.error(
+            "Failed to access expense line items collection",
+            exc_info=True,
+        )
+        raise
+    except Exception:
+        logger.error(
+            "Unexpected error accessing expense line items collection",
             exc_info=True,
         )
         raise

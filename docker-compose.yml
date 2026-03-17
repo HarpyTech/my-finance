@@ -30,7 +30,7 @@ services:
       
       # MongoDB Configuration
       - MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017}
-      - MONGODB_DB=${MONGODB_DB:-my_finance}
+      - MONGODB_DB=${MONGODB_DB:-finance}
     
     # Alternative: Use Docker secrets (uncomment for production with Docker Swarm)
     # secrets:

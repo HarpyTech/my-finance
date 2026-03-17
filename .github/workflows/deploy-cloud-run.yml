@@ -43,6 +43,8 @@ jobs:
           APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
           APP_MONGODB_URI: ${{ secrets.APP_MONGODB_URI }}
           APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
+          APP_GEMINI_API_KEY: ${{ secrets.APP_GEMINI_API_KEY }}
+          APP_GEMINI_MODEL: ${{ secrets.APP_GEMINI_MODEL }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
           python - << 'PY'
@@ -81,6 +83,8 @@ jobs:
           add_env("ALGORITHM", "APP_ALGORITHM")
           add_env("CORS_ORIGINS", "APP_CORS_ORIGINS")
           add_env("MONGODB_DB", "APP_MONGODB_DB")
+          add_env("GEMINI_API_KEY", "APP_GEMINI_API_KEY")
+          add_env("GEMINI_MODEL", "APP_GEMINI_MODEL")
 
           with open(".cloudrun.env.yaml", "w", encoding="utf-8") as f:
               yaml.safe_dump(data, f)
