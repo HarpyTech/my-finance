@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 import re
 from pymongo.errors import PyMongoError
 import logging
@@ -71,7 +71,7 @@ def add_expense(
                     "quantity": item["quantity"],
                     "unit_price": item["unit_price"],
                     "total": item["total"],
-                    "created_at": datetime.utcnow(),
+                    "created_at": datetime.now(timezone.utc),
                 }
                 for item in normalized_items
             ]

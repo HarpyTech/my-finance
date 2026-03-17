@@ -63,6 +63,9 @@ def create_expense(
         raise
 
 
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/extract-and-create", status_code=201)
 async def extract_and_create_expense(
     text_input: str | None = Form(default=None),
@@ -75,7 +78,12 @@ async def extract_and_create_expense(
     try:
         image_bytes: bytes | None = None
         if image is not None:
-            image_bytes = await image.read()
+            image_bytes = await image.read(_MAX_IMAGE_BYTES + 1)
+            if len(image_bytes) > _MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Image exceeds the {_MAX_IMAGE_BYTES // (1024 * 1024)} MB limit",
+                )
 
         extracted = extract_expense_payload(
             text_input=text_input,
