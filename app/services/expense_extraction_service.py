@@ -140,9 +140,7 @@ def _normalize_payload(
     text_input: str | None,
 ) -> dict[str, Any]:
     """Normalize model output into validated ExpenseCreate payload."""
-    line_items = _normalize_line_items(
-        raw.get("line_items") or raw.get("items") or []
-    )
+    line_items = _normalize_line_items(raw.get("line_items") or raw.get("items") or [])
 
     amount = _to_float(raw.get("amount"))
     if amount is None:
@@ -276,17 +274,10 @@ def _to_float(value: Any) -> float | None:
 
 
 def _normalize_tax_details(raw: dict[str, Any]) -> dict[str, float]:
-    tax_raw = (
-        raw.get("tax_details")
-        if isinstance(raw.get("tax_details"), dict)
-        else {}
-    )
+    tax_raw = raw.get("tax_details") if isinstance(raw.get("tax_details"), dict) else {}
 
     normalized = {
-        "subtotal": _to_float(
-            tax_raw.get("subtotal") or raw.get("subtotal")
-        )
-        or 0.0,
+        "subtotal": _to_float(tax_raw.get("subtotal") or raw.get("subtotal")) or 0.0,
         "tax": _to_float(tax_raw.get("tax") or raw.get("tax")) or 0.0,
         "cgst": _to_float(tax_raw.get("cgst") or raw.get("cgst")) or 0.0,
         "sgst": _to_float(tax_raw.get("sgst") or raw.get("sgst")) or 0.0,
@@ -300,14 +291,8 @@ def _normalize_tax_details(raw: dict[str, Any]) -> dict[str, float]:
         or 0.0,
         "cess": _to_float(tax_raw.get("cess") or raw.get("cess")) or 0.0,
         "tip": _to_float(tax_raw.get("tip") or raw.get("tip")) or 0.0,
-        "discount": _to_float(
-            tax_raw.get("discount") or raw.get("discount")
-        )
-        or 0.0,
-        "total_tax": _to_float(
-            tax_raw.get("total_tax") or raw.get("total_tax")
-        )
-        or 0.0,
+        "discount": _to_float(tax_raw.get("discount") or raw.get("discount")) or 0.0,
+        "total_tax": _to_float(tax_raw.get("total_tax") or raw.get("total_tax")) or 0.0,
     }
 
     if normalized["total_tax"] <= 0:
@@ -323,10 +308,7 @@ def _normalize_tax_details(raw: dict[str, Any]) -> dict[str, float]:
     if normalized["tax"] <= 0 and normalized["total_tax"] > 0:
         normalized["tax"] = normalized["total_tax"]
 
-    return {
-        key: round(max(0.0, value), 2)
-        for key, value in normalized.items()
-    }
+    return {key: round(max(0.0, value), 2) for key, value in normalized.items()}
 
 
 def _normalize_invoice_number(
@@ -357,9 +339,7 @@ def _normalize_invoice_number(
     if cleaned:
         return cleaned[:64]
 
-    fallback_text = " ".join(
-        part for part in [text_input or "", description] if part
-    )
+    fallback_text = " ".join(part for part in [text_input or "", description] if part)
     if not fallback_text:
         return ""
 

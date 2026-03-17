@@ -94,15 +94,10 @@ def add_expense(
         }
     except PyMongoError as exc:
         logger.error(
-            (
-                "Database error while adding expense for user "
-                f"{username}: {str(exc)}"
-            ),
+            ("Database error while adding expense for user " f"{username}: {str(exc)}"),
             exc_info=True,
         )
-        raise RuntimeError(
-            "Failed to store expense due to database error"
-        ) from exc
+        raise RuntimeError("Failed to store expense due to database error") from exc
     except Exception as exc:
         logger.error(
             (
@@ -120,9 +115,7 @@ def list_expenses(username: str):
     try:
         expenses = get_expenses_collection()
         expense_line_items = get_expense_line_items_collection()
-        docs = list(
-            expenses.find({"username": username}).sort("expense_date", -1)
-        )
+        docs = list(expenses.find({"username": username}).sort("expense_date", -1))
 
         expense_ids = [str(doc["_id"]) for doc in docs]
         line_items_map: dict[str, list[dict]] = {
@@ -181,9 +174,7 @@ def list_expenses(username: str):
             f"Database error while fetching expenses: {str(exc)}",
             exc_info=True,
         )
-        raise RuntimeError(
-            "Failed to fetch expenses due to database error"
-        ) from exc
+        raise RuntimeError("Failed to fetch expenses due to database error") from exc
     except Exception as exc:
         logger.error(
             (
@@ -301,14 +292,9 @@ def monthly_summary(username: str, year: int):
             },
         ]
         result = list(expenses.aggregate(pipeline))
-        totals = {
-            row["_id"]["month"]: round(float(row["total"]), 2)
-            for row in result
-        }
+        totals = {row["_id"]["month"]: round(float(row["total"]), 2) for row in result}
 
-        summary = [
-            {"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)
-        ]
+        summary = [{"month": m, "total": totals.get(m, 0.0)} for m in range(1, 13)]
         total_year = sum(totals.values())
         logger.info(
             f"Monthly summary for year {year}: "
@@ -394,9 +380,7 @@ def category_summary(
                 end = _as_mongo_datetime(date(year + 1, 1, 1))
             else:
                 end_date = (
-                    date(year + 1, 1, 1)
-                    if month == 12
-                    else date(year, month + 1, 1)
+                    date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
                 )
                 end = _as_mongo_datetime(end_date)
             match["expense_date"] = {"$gte": start, "$lt": end}
@@ -419,10 +403,7 @@ def category_summary(
             }
             for row in result
         ]
-        logger.info(
-            f"Category summary ({period}): "
-            f"{len(summary)} categories"
-        )
+        logger.info(f"Category summary ({period}): " f"{len(summary)} categories")
         return summary
     except PyMongoError as exc:
         logger.error(
