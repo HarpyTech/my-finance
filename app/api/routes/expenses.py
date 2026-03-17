@@ -63,7 +63,7 @@ def create_expense(
         raise
 
 
-_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+_MAX_IMAGE_BYTES = 6 * 1024 * 1024  # 6 MB
 
 
 @router.post("/extract-and-create", status_code=201)
@@ -128,6 +128,9 @@ async def extract_and_create_expense(
             exc_info=True,
         )
         raise
+    finally:
+        if image is not None:
+            await image.close()
 
 
 def _infer_input_type(
