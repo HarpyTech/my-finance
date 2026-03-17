@@ -111,9 +111,6 @@ export default function ReportPage() {
       <header className="dashboard-header">
         <div>
           <h1>Expense Reports</h1>
-          <p>
-            Logged in as <strong>{session.user}</strong> ({session.role})
-          </p>
         </div>
         <div className="header-actions">
           <TopNavigation />

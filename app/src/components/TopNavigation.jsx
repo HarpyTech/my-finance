@@ -8,6 +8,10 @@ const MENU_ITEMS = [
   { to: '/add-expense', icon: '+', label: 'Add Expense' },
 ];
 
+const PHONE_PATTERN = /^\+?[0-9]{8,15}$/;
+const ADDRESS_MIN_LENGTH = 10;
+const ADDRESS_MAX_LENGTH = 120;
+
 export default function TopNavigation() {
   const { session, profile, updateProfile } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -58,6 +62,25 @@ export default function TopNavigation() {
     address: profile?.address || '',
   });
 
+  const trimmedPhone = form.phone.trim();
+  const normalizedPhone = trimmedPhone.replace(/[\s()-]/g, '');
+  const trimmedAddress = form.address.trim();
+  const addressLength = trimmedAddress.length;
+
+  const phoneValidationError =
+    normalizedPhone && !PHONE_PATTERN.test(normalizedPhone)
+      ? 'Use a valid phone format, for example +14155552671.'
+      : '';
+
+  let addressValidationError = '';
+  if (trimmedAddress && addressLength < ADDRESS_MIN_LENGTH) {
+    addressValidationError = `Address must be at least ${ADDRESS_MIN_LENGTH} characters.`;
+  } else if (addressLength > ADDRESS_MAX_LENGTH) {
+    addressValidationError = `Address must be ${ADDRESS_MAX_LENGTH} characters or fewer.`;
+  }
+
+  const hasValidationErrors = Boolean(phoneValidationError || addressValidationError);
+
   useEffect(() => {
     setForm({
       first_name: profile?.first_name || '',
@@ -91,11 +114,21 @@ export default function TopNavigation() {
 
   async function handleSaveProfile(event) {
     event.preventDefault();
+    if (hasValidationErrors) {
+      setError('Please fix the highlighted profile fields and try again.');
+      setMessage('');
+      return;
+    }
+
     setSaving(true);
     setError('');
     setMessage('');
     try {
-      await updateProfile(form);
+      await updateProfile({
+        ...form,
+        phone: normalizedPhone,
+        address: trimmedAddress,
+      });
       setMessage('Profile updated successfully.');
       window.setTimeout(() => {
         setIsProfileOpen(false);
@@ -194,16 +227,26 @@ export default function TopNavigation() {
                 Phone
                 <input
                   type="tel"
+                  placeholder="+14155552671"
                   value={form.phone}
                   onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
                 />
+                {phoneValidationError ? (
+                  <span className="error-text">{phoneValidationError}</span>
+                ) : (
+                  <span className="help-text">Include country code when possible.</span>
+                )}
               </label>
               <label>
                 Address
                 <textarea
+                  maxLength={ADDRESS_MAX_LENGTH + 15}
                   value={form.address}
                   onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))}
                 />
+                <span className={addressValidationError ? 'error-text' : 'help-text'}>
+                  {addressValidationError || `${addressLength}/${ADDRESS_MAX_LENGTH} characters`}
+                </span>
               </label>
 
               {error ? <p className="error-text">{error}</p> : null}
@@ -213,7 +256,7 @@ export default function TopNavigation() {
                 <button type="button" className="secondary-button" onClick={() => setIsProfileOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" disabled={saving}>
+                <button type="submit" disabled={saving || hasValidationErrors}>
                   {saving ? 'Saving...' : 'Save'}
                 </button>
               </div>

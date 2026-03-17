@@ -120,9 +120,6 @@ export default function AddExpensePage() {
       <header className="dashboard-header">
         <div>
           <h1>Add Expense</h1>
-          <p>
-            Logged in as <strong>{session.user}</strong> ({session.role})
-          </p>
         </div>
         <div className="header-actions">
           <TopNavigation />

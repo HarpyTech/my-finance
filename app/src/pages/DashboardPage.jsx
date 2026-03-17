@@ -135,9 +135,6 @@ export default function DashboardPage() {
       <header className="dashboard-header">
         <div>
           <h1>My Finance Dashboard</h1>
-          <p>
-            Logged in as <strong>{session.user}</strong> ({session.role})
-          </p>
         </div>
         <div className="header-actions">
           <TopNavigation />
