@@ -12,7 +12,7 @@ from fastapi import (
 import logging
 
 from app.api.deps import get_current_user
-from app.models.expense import ExpenseCreate
+from app.models.expense import ExpenseCreate, ExpenseInputType
 from app.services.expense_service import (
     add_expense,
     category_summary,
@@ -39,6 +39,7 @@ def create_expense(
             amount=payload.amount,
             category=payload.category,
             bill_type=payload.bill_type,
+            input_type=payload.input_type,
             vendor=payload.vendor,
             description=payload.description,
             expense_date=payload.expense_date,
@@ -65,6 +66,7 @@ def create_expense(
 async def extract_and_create_expense(
     text_input: str | None = Form(default=None),
     image: UploadFile | None = File(default=None),
+    input_type: ExpenseInputType | None = Form(default=None),
     user: str = Depends(get_current_user),
 ):
     """Extract expense details with Gemini and insert into DB."""
@@ -85,6 +87,7 @@ async def extract_and_create_expense(
             amount=extracted["amount"],
             category=extracted["category"],
             bill_type=extracted["bill_type"],
+            input_type=input_type or _infer_input_type(text_input, image is not None),
             vendor=extracted["vendor"],
             description=extracted["description"],
             expense_date=date.fromisoformat(extracted["expense_date"]),
@@ -115,6 +118,17 @@ async def extract_and_create_expense(
             exc_info=True,
         )
         raise
+
+
+def _infer_input_type(
+    text_input: str | None,
+    has_image: bool,
+) -> ExpenseInputType:
+    if text_input and has_image:
+        return "mixed"
+    if has_image:
+        return "image"
+    return "text"
 
 
 @router.get("")

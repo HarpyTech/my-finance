@@ -20,6 +20,7 @@ const CATEGORIES = ['Food', 'Travel', 'Utilities', 'Shopping', 'Health', 'Other'
 export default function DashboardPage() {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
+  const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 
   const [expenseForm, setExpenseForm] = useState({
     amount: '',
@@ -34,6 +35,7 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [aiInputText, setAiInputText] = useState('');
   const [aiImageFile, setAiImageFile] = useState(null);
+  const [cameraImageFile, setCameraImageFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
 
@@ -70,6 +72,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           amount: Number(expenseForm.amount),
           category: expenseForm.category,
+          input_type: 'manual',
           description: expenseForm.description,
           expense_date: expenseForm.expense_date,
         }),
@@ -95,7 +98,9 @@ export default function DashboardPage() {
     event.preventDefault();
     setError('');
 
-    if (!aiInputText.trim() && !aiImageFile) {
+    const selectedImageFile = cameraImageFile || aiImageFile;
+
+    if (!aiInputText.trim() && !selectedImageFile) {
       setError('Provide text input or upload an image for extraction.');
       return;
     }
@@ -103,12 +108,19 @@ export default function DashboardPage() {
     try {
       setExtracting(true);
       const formData = new FormData();
+      const derivedInputType = getDerivedInputType({
+        textInput: aiInputText,
+        imageFile: aiImageFile,
+        cameraFile: cameraImageFile,
+      });
+
       if (aiInputText.trim()) {
         formData.append('text_input', aiInputText.trim());
       }
-      if (aiImageFile) {
-        formData.append('image', aiImageFile);
+      if (selectedImageFile) {
+        formData.append('image', selectedImageFile);
       }
+      formData.append('input_type', derivedInputType);
 
       const response = await apiRequest('/expenses/extract-and-create', {
         method: 'POST',
@@ -118,6 +130,7 @@ export default function DashboardPage() {
       setLastExtracted(response.extracted || null);
       setAiInputText('');
       setAiImageFile(null);
+      setCameraImageFile(null);
       await loadData();
     } catch (err) {
       setError(err.message);
@@ -130,6 +143,23 @@ export default function DashboardPage() {
     () => expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     [expenses]
   );
+
+  function getDerivedInputType({ textInput, imageFile, cameraFile }) {
+    const hasText = Boolean(textInput.trim());
+    const hasImage = Boolean(imageFile);
+    const hasCamera = Boolean(cameraFile);
+
+    if (hasText && (hasImage || hasCamera)) {
+      return 'mixed';
+    }
+    if (hasCamera) {
+      return 'camera';
+    }
+    if (hasImage) {
+      return 'image';
+    }
+    return 'text';
+  }
 
   return (
     <main className="dashboard-layout">
@@ -225,9 +255,31 @@ export default function DashboardPage() {
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => setAiImageFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  setAiImageFile(e.target.files?.[0] || null);
+                  setCameraImageFile(null);
+                }}
               />
             </label>
+            {isMobileDevice ? (
+              <label>
+                Capture With Camera
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    setCameraImageFile(e.target.files?.[0] || null);
+                    setAiImageFile(null);
+                  }}
+                />
+              </label>
+            ) : null}
+            <p className="help-text">
+              {isMobileDevice
+                ? 'On mobile you can either upload an image or open the camera directly.'
+                : 'Upload a receipt image or paste text for AI extraction.'}
+            </p>
             <button type="submit" disabled={extracting}>
               {extracting ? 'Extracting...' : 'Extract + Save Expense'}
             </button>
@@ -293,6 +345,7 @@ export default function DashboardPage() {
                 <th>ID</th>
                 <th>Date</th>
                 <th>Category</th>
+                <th>Input Type</th>
                 <th>Vendor</th>
                 <th>Description</th>
                 <th>Amount</th>
@@ -304,6 +357,7 @@ export default function DashboardPage() {
                   <td>{item.id}</td>
                   <td>{item.expense_date}</td>
                   <td>{item.category}</td>
+                  <td>{item.input_type || 'manual'}</td>
                   <td>{item.vendor || '-'}</td>
                   <td>{item.description || '-'}</td>
                   <td>${Number(item.amount).toFixed(2)}</td>

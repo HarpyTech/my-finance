@@ -5,6 +5,13 @@ from pydantic import BaseModel, Field
 
 
 BillType = Literal["grocery", "restaurant", "service", "utility", "other"]
+ExpenseInputType = Literal[
+    "manual",
+    "text",
+    "image",
+    "camera",
+    "mixed",
+]
 
 
 class ExpenseLineItem(BaseModel):
@@ -32,6 +39,7 @@ class ExpenseCreate(BaseModel):
     amount: float = Field(gt=0)
     category: str = Field(default="other", min_length=2, max_length=64)
     bill_type: BillType = "other"
+    input_type: ExpenseInputType = "manual"
     vendor: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=255)
     expense_date: date
@@ -44,6 +52,7 @@ class ExpenseItem(BaseModel):
     amount: float
     category: str
     bill_type: BillType
+    input_type: ExpenseInputType
     vendor: str
     description: str
     expense_date: date

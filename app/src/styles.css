@@ -83,6 +83,12 @@ button:disabled {
   margin: 4px 0;
 }
 
+.help-text {
+  margin: 0;
+  color: #516079;
+  font-size: 13px;
+}
+
 .dashboard-layout {
   padding: 20px;
   display: grid;
