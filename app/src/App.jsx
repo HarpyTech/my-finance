@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import ReportPage from './pages/ReportPage';
+import AddExpensePage from './pages/AddExpensePage';
 
 function ProtectedRoute({ children }) {
   const { session, loading } = useAuth();
@@ -37,6 +38,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ReportPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/add-expense"
+        element={
+          <ProtectedRoute>
+            <AddExpensePage />
           </ProtectedRoute>
         }
       />

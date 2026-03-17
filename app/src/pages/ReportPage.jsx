@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
 export default function ReportPage() {
@@ -115,24 +116,7 @@ export default function ReportPage() {
           </p>
         </div>
         <div className="header-actions">
-          <nav className="top-menu" aria-label="Primary navigation">
-            <NavLink
-              to="/dashboard"
-              className={({ isActive }) =>
-                isActive ? 'top-menu-link active' : 'top-menu-link'
-              }
-            >
-              Dashboard
-            </NavLink>
-            <NavLink
-              to="/report"
-              className={({ isActive }) =>
-                isActive ? 'top-menu-link active' : 'top-menu-link'
-              }
-            >
-              Report
-            </NavLink>
-          </nav>
+          <TopNavigation />
           <button onClick={handleLogout}>Logout</button>
         </div>
       </header>
