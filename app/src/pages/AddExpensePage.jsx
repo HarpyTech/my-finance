@@ -7,7 +7,7 @@ import { apiRequest } from '../lib/api';
 const CATEGORIES = ['Food', 'Travel', 'Utilities', 'Shopping', 'Health', 'Other'];
 
 export default function AddExpensePage() {
-  const { session, logout } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
   const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 

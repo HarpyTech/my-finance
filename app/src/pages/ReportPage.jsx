@@ -5,7 +5,7 @@ import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
 export default function ReportPage() {
-  const { session, logout } = useAuth();
+  const { logout } = useAuth();
   const navigate = useNavigate();
 
   const [expenses, setExpenses] = useState([]);
