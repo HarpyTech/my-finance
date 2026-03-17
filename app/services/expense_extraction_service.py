@@ -129,7 +129,9 @@ def _prepare_image_part(image_bytes: bytes) -> dict[str, Any]:
     """Resize/compress image before sending to Gemini to reduce peak memory usage."""
     with Image.open(io.BytesIO(image_bytes)) as image:
         working = image.convert("RGB")
-        working.thumbnail((_MAX_IMAGE_DIMENSION, _MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
+        working.thumbnail(
+            (_MAX_IMAGE_DIMENSION, _MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS
+        )
 
         buffer = io.BytesIO()
         try:
