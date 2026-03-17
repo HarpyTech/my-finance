@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 _ALLOWED_BILL_TYPES = {"grocery", "restaurant", "service", "utility", "other"}
 _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?|```", re.IGNORECASE)
 _JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
+_MAX_IMAGE_DIMENSION = 1600
+_JPEG_QUALITY = 72
+_MAX_OUTPUT_TOKENS = 512
 _gemini_model: genai.GenerativeModel | None = None
 
 
@@ -86,13 +89,15 @@ def extract_expense_payload(
         if image_mime_type and not image_mime_type.startswith("image/"):
             raise ValueError("Only image uploads are supported")
         try:
-            image = Image.open(io.BytesIO(image_bytes))
-            prompt_parts.append(image)
+            prompt_parts.append(_prepare_image_part(image_bytes=image_bytes))
         except UnidentifiedImageError as exc:
             raise ValueError("Unsupported image format") from exc
 
     logger.info("Calling Gemini model for expense extraction")
-    response = model.generate_content(prompt_parts)
+    response = model.generate_content(
+        prompt_parts,
+        generation_config=genai.GenerationConfig(max_output_tokens=_MAX_OUTPUT_TOKENS),
+    )
     raw_text = (getattr(response, "text", "") or "").strip()
 
     if not raw_text:
@@ -118,6 +123,29 @@ def _get_model() -> genai.GenerativeModel:
     genai.configure(api_key=settings.GEMINI_API_KEY)
     _gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL)
     return _gemini_model
+
+
+def _prepare_image_part(image_bytes: bytes) -> dict[str, Any]:
+    """Resize/compress image before sending to Gemini to reduce peak memory usage."""
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        working = image.convert("RGB")
+        working.thumbnail((_MAX_IMAGE_DIMENSION, _MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
+
+        buffer = io.BytesIO()
+        try:
+            working.save(
+                buffer,
+                format="JPEG",
+                quality=_JPEG_QUALITY,
+                optimize=True,
+            )
+            return {
+                "mime_type": "image/jpeg",
+                "data": buffer.getvalue(),
+            }
+        finally:
+            working.close()
+            buffer.close()
 
 
 def _parse_json_from_model(raw_text: str) -> dict[str, Any]:
