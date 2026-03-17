@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -170,7 +170,27 @@ export default function DashboardPage() {
             Logged in as <strong>{session.user}</strong> ({session.role})
           </p>
         </div>
-        <button onClick={handleLogout}>Logout</button>
+        <div className="header-actions">
+          <nav className="top-menu" aria-label="Primary navigation">
+            <NavLink
+              to="/dashboard"
+              className={({ isActive }) =>
+                isActive ? 'top-menu-link active' : 'top-menu-link'
+              }
+            >
+              Dashboard
+            </NavLink>
+            <NavLink
+              to="/report"
+              className={({ isActive }) =>
+                isActive ? 'top-menu-link active' : 'top-menu-link'
+              }
+            >
+              Report
+            </NavLink>
+          </nav>
+          <button onClick={handleLogout}>Logout</button>
+        </div>
       </header>
 
       <section className="stats-grid">
@@ -336,37 +356,6 @@ export default function DashboardPage() {
         </article>
       </section>
 
-      <section className="panel">
-        <h2>Recent Expenses</h2>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Date</th>
-                <th>Category</th>
-                <th>Input Type</th>
-                <th>Vendor</th>
-                <th>Description</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.slice().reverse().map((item) => (
-                <tr key={item.id}>
-                  <td>{item.id}</td>
-                  <td>{item.expense_date}</td>
-                  <td>{item.category}</td>
-                  <td>{item.input_type || 'manual'}</td>
-                  <td>{item.vendor || '-'}</td>
-                  <td>{item.description || '-'}</td>
-                  <td>${Number(item.amount).toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </main>
   );
 }

@@ -3,6 +3,7 @@ import { useAuth } from './auth/AuthContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
+import ReportPage from './pages/ReportPage';
 
 function ProtectedRoute({ children }) {
   const { session, loading } = useAuth();
@@ -28,6 +29,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/report"
+        element={
+          <ProtectedRoute>
+            <ReportPage />
           </ProtectedRoute>
         }
       />
