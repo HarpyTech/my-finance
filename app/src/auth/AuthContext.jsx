@@ -5,7 +5,24 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState({ authenticated: false, user: null, role: null });
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const refreshProfile = useCallback(async () => {
+    if (!session.authenticated) {
+      setProfile(null);
+      return null;
+    }
+
+    try {
+      const data = await apiRequest('/users/me');
+      setProfile(data);
+      return data;
+    } catch (error) {
+      setProfile(null);
+      return null;
+    }
+  }, [session.authenticated]);
 
   const refreshSession = useCallback(async () => {
     try {
@@ -21,6 +38,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     refreshSession();
   }, [refreshSession]);
+
+  useEffect(() => {
+    if (session.authenticated) {
+      refreshProfile();
+      return;
+    }
+    setProfile(null);
+  }, [session.authenticated, refreshProfile]);
 
   const login = async (username, password) => {
     await apiRequest('/auth/login', {
@@ -40,11 +65,31 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     await apiRequest('/auth/logout', { method: 'POST' });
     setSession({ authenticated: false, user: null, role: null });
+    setProfile(null);
+  };
+
+  const updateProfile = async (payload) => {
+    const data = await apiRequest('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    setProfile(data);
+    return data;
   };
 
   const value = useMemo(
-    () => ({ session, loading, login, register, logout, refreshSession }),
-    [session, loading, refreshSession]
+    () => ({
+      session,
+      profile,
+      loading,
+      login,
+      register,
+      logout,
+      refreshSession,
+      refreshProfile,
+      updateProfile,
+    }),
+    [session, profile, loading, refreshSession, refreshProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

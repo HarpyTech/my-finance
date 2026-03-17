@@ -133,6 +133,12 @@ button:disabled {
 
 .top-menu {
   display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.top-menu-links {
+  display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
@@ -170,6 +176,82 @@ button:disabled {
 
 .top-menu-link.active .top-menu-icon {
   background: rgba(255, 255, 255, 0.18);
+}
+
+.profile-menu {
+  position: relative;
+  margin-left: auto;
+}
+
+.profile-icon-button {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid #c9d9ff;
+  background: #edf3ff;
+  color: var(--brand);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.profile-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(290px, 86vw);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 18px 36px rgba(14, 31, 62, 0.14);
+  z-index: 30;
+}
+
+.profile-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.profile-email {
+  margin: 4px 0 10px;
+  color: #516079;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.profile-dropdown-action {
+  width: 100%;
+}
+
+.profile-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 18, 38, 0.42);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  z-index: 50;
+}
+
+.profile-modal {
+  width: min(560px, 100%);
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  box-shadow: 0 22px 48px rgba(8, 22, 45, 0.22);
+  padding: 20px;
+}
+
+.profile-modal h2 {
+  margin: 0 0 4px;
+}
+
+.profile-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .stats-grid {
@@ -346,6 +428,13 @@ td {
   }
 
   .top-menu {
+    align-items: stretch;
+    width: 100%;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .top-menu-links {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
@@ -359,6 +448,24 @@ td {
 
   .top-menu-label {
     font-size: 12px;
+  }
+
+  .profile-menu {
+    margin-left: 0;
+    align-self: flex-end;
+  }
+
+  .profile-icon-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  .profile-modal {
+    padding: 16px;
+  }
+
+  .profile-modal-actions {
+    flex-direction: column;
   }
 
   .camera-preview-actions {

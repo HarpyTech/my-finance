@@ -18,3 +18,19 @@ class UserPublic(BaseModel):
 
 class UserInDB(UserPublic):
     password_hash: str
+
+
+class UserProfile(BaseModel):
+    username: EmailStr
+    role: str
+    first_name: str | None = None
+    last_name: str | None = None
+    phone: str | None = None
+    address: str | None = None
+
+
+class UserProfileUpdate(BaseModel):
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    phone: str | None = Field(default=None, max_length=30)
+    address: str | None = Field(default=None, max_length=250)
