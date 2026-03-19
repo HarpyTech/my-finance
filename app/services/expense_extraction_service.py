@@ -84,10 +84,12 @@ def extract_expense_payload(
     if image_bytes:
         if image_mime_type and not image_mime_type.startswith("image/"):
             raise ValueError("Only image uploads are supported")
-        prompt_parts.append({
-            "mime_type": image_mime_type or "image/jpeg",
-            "data": image_bytes,
-        })
+        prompt_parts.append(
+            {
+                "mime_type": image_mime_type or "image/jpeg",
+                "data": image_bytes,
+            }
+        )
 
     logger.info("Calling Gemini model for expense extraction")
     response = model.generate_content(
