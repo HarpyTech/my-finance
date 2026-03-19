@@ -14,6 +14,9 @@ from pydantic import ValidationError
 from app.core.config import settings
 from app.models.expense import ExpenseCreate
 
+# Limit Pillow decompression to prevent memory spikes from very large images
+Image.MAX_IMAGE_PIXELS = 20_000_000  # ~5000x4000 max
+
 logger = logging.getLogger(__name__)
 
 _ALLOWED_BILL_TYPES = {"grocery", "restaurant", "service", "utility", "other"}

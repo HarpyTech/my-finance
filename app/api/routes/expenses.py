@@ -85,11 +85,13 @@ async def extract_and_create_expense(
                     detail=f"Image exceeds the {_MAX_IMAGE_BYTES // (1024 * 1024)} MB limit",
                 )
 
+        mime_type = image.content_type if image else None
         extracted = extract_expense_payload(
             text_input=text_input,
             image_bytes=image_bytes,
-            image_mime_type=image.content_type if image else None,
+            image_mime_type=mime_type,
         )
+        del image_bytes  # free original bytes early to reduce peak memory
 
         result = add_expense(
             username=user,
