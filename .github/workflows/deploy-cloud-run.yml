@@ -146,5 +146,6 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8000 \
+            --memory 2Gi \
             --env-vars-file .cloudrun.env.yaml \
             --quiet
