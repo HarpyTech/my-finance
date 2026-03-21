@@ -126,16 +126,28 @@ def _get_model() -> genai.GenerativeModel:
 def _parse_json_from_model(raw_text: str) -> dict[str, Any]:
     """Extract JSON object from model output text."""
     cleaned = _CODE_FENCE_PATTERN.sub("", raw_text).strip()
-    direct_candidate = cleaned
 
     if cleaned.startswith("{") and cleaned.endswith("}"):
-        return json.loads(direct_candidate)
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Fall through to regex search
+            pass
 
     match = _JSON_OBJECT_PATTERN.search(cleaned)
     if not match:
+        logger.error("Could not find a JSON object in model output. Raw text: %s", raw_text)
         raise RuntimeError("Could not find a JSON object in model output")
 
-    return json.loads(match.group(0))
+    try:
+        return json.loads(match.group(0))
+    except json.JSONDecodeError as exc:
+        logger.error(
+            "Found a JSON-like object, but failed to parse. Raw text: %s",
+            raw_text,
+            exc_info=True,
+        )
+        raise RuntimeError("Could not parse JSON object from model output") from exc
 
 
 def _normalize_payload(
