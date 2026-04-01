@@ -95,7 +95,7 @@ jobs:
         run: |
           REGION="${{ secrets.GCP_REGION }}"
           if [ -z "${REGION}" ]; then
-            REGION="asia-south1"
+            REGION="us-east1"
           fi
           SERVICE_NAME="${{ secrets.CLOUD_RUN_SERVICE }}"
           if [ -z "${SERVICE_NAME}" ]; then
