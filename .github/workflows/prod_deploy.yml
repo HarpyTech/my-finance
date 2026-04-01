@@ -1,160 +1,20 @@
-﻿name: Deploy
+﻿name: Deploy to Compute Engine (main)
 
 on:
   push:
     branches:
-      - develop
       - main
   workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-compute-engine-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  # Deploys to Cloud Run on the develop branch
-  deploy-cloud-run:
-    if: github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud (Service Account Key)
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Build Cloud Run env file
-        shell: bash
-        env:
-        #   APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
-        #   APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
-          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
-          APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.APP_ACCESS_TOKEN_EXPIRE_MINUTES }}
-        #   APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
-        #   APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
-          APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
-          APP_MONGODB_URI: ${{ secrets.APP_MONGODB_URI }}
-          APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
-          APP_GEMINI_API_KEY: ${{ secrets.APP_GEMINI_API_KEY }}
-          APP_GEMINI_MODEL: ${{ secrets.APP_GEMINI_MODEL }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: |
-          python - << 'PY'
-          import os
-          import sys
-          import yaml
-
-          # Validate required secrets are present and meet minimum requirements
-          required = {
-              "APP_SECRET_KEY": os.getenv("APP_SECRET_KEY", ""),
-              "APP_DEFAULT_LOGIN_PASSWORD": os.getenv("APP_DEFAULT_LOGIN_PASSWORD", ""),
-              "APP_MONGODB_URI": os.getenv("APP_MONGODB_URI", ""),
-          }
-          missing = [k for k, v in required.items() if not v]
-          if missing:
-              print(f"ERROR: Required secrets are not set: {', '.join(missing)}", file=sys.stderr)
-              sys.exit(1)
-          if len(required["APP_SECRET_KEY"]) < 32:
-              print("ERROR: APP_SECRET_KEY must be at least 32 characters long.", file=sys.stderr)
-              sys.exit(1)
-
-          data = {}
-
-          def add_env(yaml_key, env_var):
-              value = os.getenv(env_var)
-              if value:
-                  data[yaml_key] = value
-
-          add_env("SECRET_KEY", "APP_SECRET_KEY")
-          add_env("DEFAULT_LOGIN_PASSWORD", "APP_DEFAULT_LOGIN_PASSWORD")
-          add_env("MONGODB_URI", "APP_MONGODB_URI")
-          data["BUILD_VERSION"] = os.getenv("GITHUB_SHA", "")
-          add_env("PROJECT_NAME", "APP_PROJECT_NAME")
-          add_env("API_V1_STR", "APP_API_V1_STR")
-          add_env("ACCESS_TOKEN_EXPIRE_MINUTES", "APP_ACCESS_TOKEN_EXPIRE_MINUTES")
-          add_env("ALGORITHM", "APP_ALGORITHM")
-          add_env("CORS_ORIGINS", "APP_CORS_ORIGINS")
-          add_env("MONGODB_DB", "APP_MONGODB_DB")
-          add_env("GEMINI_API_KEY", "APP_GEMINI_API_KEY")
-          add_env("GEMINI_MODEL", "APP_GEMINI_MODEL")
-
-          with open(".cloudrun.env.yaml", "w", encoding="utf-8") as f:
-              yaml.safe_dump(data, f)
-          PY
-
-      - name: Resolve deploy parameters
-        shell: bash
-        run: |
-          REGION="${{ secrets.GCP_REGION }}"
-          if [ -z "${REGION}" ]; then
-            REGION="asia-south1"
-          fi
-          SERVICE_NAME="${{ secrets.CLOUD_RUN_SERVICE }}"
-          if [ -z "${SERVICE_NAME}" ]; then
-            SERVICE_NAME="finance-prod"
-          fi
-
-          # Use the service name as Artifact Registry repository name to avoid extra secrets.
-          AR_REPOSITORY="${SERVICE_NAME}"
-
-          AR_HOST="${REGION}-docker.pkg.dev"
-          IMAGE_URI="${AR_HOST}/${{ secrets.GCP_PROJECT_ID }}/${AR_REPOSITORY}/${SERVICE_NAME}:${{ github.sha }}"
-
-          echo "REGION=${REGION}" >> "$GITHUB_ENV"
-          echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
-          echo "AR_REPOSITORY=${AR_REPOSITORY}" >> "$GITHUB_ENV"
-          echo "AR_HOST=${AR_HOST}" >> "$GITHUB_ENV"
-          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
-
-      - name: Ensure Artifact Registry repository exists
-        shell: bash
-        run: |
-          if ! gcloud artifacts repositories describe "${AR_REPOSITORY}" --location "${REGION}" --project "${{ secrets.GCP_PROJECT_ID }}" > /dev/null 2>&1; then
-            gcloud artifacts repositories create "${AR_REPOSITORY}" \
-              --repository-format=docker \
-              --location "${REGION}" \
-              --description "Docker images for ${SERVICE_NAME}" \
-              --project "${{ secrets.GCP_PROJECT_ID }}"
-          fi
-
-      - name: Configure Docker for Artifact Registry
-        run: |
-          gcloud auth configure-docker "${AR_HOST}" --quiet
-
-      - name: Build Docker image
-        run: |
-          docker build -t "${IMAGE_URI}" .
-
-      - name: Push image to Artifact Registry
-        run: |
-          docker push "${IMAGE_URI}"
-
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy "${SERVICE_NAME}" \
-            --image "${IMAGE_URI}" \
-            --region "${REGION}" \
-            --platform managed \
-            --allow-unauthenticated \
-            --port 8000 \
-            --memory 2Gi \
-            --env-vars-file .cloudrun.env.yaml \
-            --quiet
-
-  # Deploys to Compute Engine (e2-medium) on the main branch
   deploy-compute-engine:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
