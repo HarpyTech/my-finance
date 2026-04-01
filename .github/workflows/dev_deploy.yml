@@ -99,7 +99,9 @@ jobs:
           fi
           SERVICE_NAME="${{ secrets.CLOUD_RUN_SERVICE }}"
           if [ -z "${SERVICE_NAME}" ]; then
-            SERVICE_NAME="finance-prod"
+            SERVICE_NAME="finance-dev"
+          elif [[ "${SERVICE_NAME}" != *-dev ]]; then
+            SERVICE_NAME="${SERVICE_NAME}-dev"
           fi
 
           # Use the service name as Artifact Registry repository name to avoid extra secrets.

@@ -103,6 +103,8 @@ jobs:
           INSTANCE_NAME="${{ secrets.GCE_INSTANCE_NAME }}"
           if [ -z "${INSTANCE_NAME}" ]; then
             INSTANCE_NAME="finance-prod"
+          elif [[ "${INSTANCE_NAME}" != *-prod ]]; then
+            INSTANCE_NAME="${INSTANCE_NAME}-prod"
           fi
 
           # Use the instance name as Artifact Registry repository name to avoid extra secrets.
