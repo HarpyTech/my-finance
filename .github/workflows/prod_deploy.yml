@@ -96,9 +96,25 @@ jobs:
           if [ -z "${REGION}" ]; then
             REGION="us-east1"
           fi
+
+          PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}"
           ZONE="${{ secrets.GCP_ZONE }}"
           if [ -z "${ZONE}" ]; then
-            ZONE="${REGION}-a"
+            ZONE=$(gcloud compute zones list \
+              --project "${PROJECT_ID}" \
+              --filter="region:(${REGION}) AND status=UP" \
+              --format="value(name)" \
+              | head -n 1)
+          fi
+
+          if [ -z "${ZONE}" ]; then
+            echo "ERROR: Could not find an available zone in region '${REGION}'. Set the GCP_ZONE secret explicitly (example: us-east1-b)." >&2
+            exit 1
+          fi
+
+          if ! gcloud compute zones describe "${ZONE}" --project "${PROJECT_ID}" > /dev/null 2>&1; then
+            echo "ERROR: Zone '${ZONE}' is invalid or inaccessible for project '${PROJECT_ID}'. Set GCP_ZONE to a valid zone you are allowed to use." >&2
+            exit 1
           fi
           INSTANCE_NAME="${{ secrets.GCE_INSTANCE_NAME }}"
           if [ -z "${INSTANCE_NAME}" ]; then
