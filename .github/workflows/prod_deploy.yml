@@ -1,4 +1,4 @@
-name: Deploy to Cloud Run
+﻿name: Deploy to Compute Engine (main)
 
 on:
   push:
@@ -7,14 +7,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: cloud-run-deploy-${{ github.ref }}
+  group: deploy-compute-engine-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
+  deploy-compute-engine:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,7 +31,7 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Build Cloud Run env file
+      - name: Build GCE container env file
         shell: bash
         env:
         #   APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
@@ -50,7 +50,6 @@ jobs:
           python - << 'PY'
           import os
           import sys
-          import yaml
 
           # Validate required secrets are present and meet minimum requirements
           required = {
@@ -66,17 +65,17 @@ jobs:
               print("ERROR: APP_SECRET_KEY must be at least 32 characters long.", file=sys.stderr)
               sys.exit(1)
 
-          data = {}
+          lines = []
 
-          def add_env(yaml_key, env_var):
+          def add_env(key, env_var):
               value = os.getenv(env_var)
               if value:
-                  data[yaml_key] = value
+                  lines.append(f"{key}={value}")
 
           add_env("SECRET_KEY", "APP_SECRET_KEY")
           add_env("DEFAULT_LOGIN_PASSWORD", "APP_DEFAULT_LOGIN_PASSWORD")
           add_env("MONGODB_URI", "APP_MONGODB_URI")
-          data["BUILD_VERSION"] = os.getenv("GITHUB_SHA", "")
+          lines.append(f"BUILD_VERSION={os.getenv('GITHUB_SHA', '')}")
           add_env("PROJECT_NAME", "APP_PROJECT_NAME")
           add_env("API_V1_STR", "APP_API_V1_STR")
           add_env("ACCESS_TOKEN_EXPIRE_MINUTES", "APP_ACCESS_TOKEN_EXPIRE_MINUTES")
@@ -86,8 +85,8 @@ jobs:
           add_env("GEMINI_API_KEY", "APP_GEMINI_API_KEY")
           add_env("GEMINI_MODEL", "APP_GEMINI_MODEL")
 
-          with open(".cloudrun.env.yaml", "w", encoding="utf-8") as f:
-              yaml.safe_dump(data, f)
+          with open(".gce.env", "w", encoding="utf-8") as f:
+              f.write("\n".join(lines) + "\n")
           PY
 
       - name: Resolve deploy parameters
@@ -97,20 +96,24 @@ jobs:
           if [ -z "${REGION}" ]; then
             REGION="asia-south1"
           fi
-
-          SERVICE_NAME="${{ secrets.CLOUD_RUN_SERVICE }}"
-          if [ -z "${SERVICE_NAME}" ]; then
-            SERVICE_NAME="finance-prod"
+          ZONE="${{ secrets.GCP_ZONE }}"
+          if [ -z "${ZONE}" ]; then
+            ZONE="${REGION}-a"
+          fi
+          INSTANCE_NAME="${{ secrets.GCE_INSTANCE_NAME }}"
+          if [ -z "${INSTANCE_NAME}" ]; then
+            INSTANCE_NAME="finance-prod"
           fi
 
-          # Use the service name as Artifact Registry repository name to avoid extra secrets.
-          AR_REPOSITORY="${SERVICE_NAME}"
+          # Use the instance name as Artifact Registry repository name to avoid extra secrets.
+          AR_REPOSITORY="${INSTANCE_NAME}"
 
           AR_HOST="${REGION}-docker.pkg.dev"
-          IMAGE_URI="${AR_HOST}/${{ secrets.GCP_PROJECT_ID }}/${AR_REPOSITORY}/${SERVICE_NAME}:${{ github.sha }}"
+          IMAGE_URI="${AR_HOST}/${{ secrets.GCP_PROJECT_ID }}/${AR_REPOSITORY}/${INSTANCE_NAME}:${{ github.sha }}"
 
           echo "REGION=${REGION}" >> "$GITHUB_ENV"
-          echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
+          echo "ZONE=${ZONE}" >> "$GITHUB_ENV"
+          echo "INSTANCE_NAME=${INSTANCE_NAME}" >> "$GITHUB_ENV"
           echo "AR_REPOSITORY=${AR_REPOSITORY}" >> "$GITHUB_ENV"
           echo "AR_HOST=${AR_HOST}" >> "$GITHUB_ENV"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
@@ -122,7 +125,7 @@ jobs:
             gcloud artifacts repositories create "${AR_REPOSITORY}" \
               --repository-format=docker \
               --location "${REGION}" \
-              --description "Docker images for ${SERVICE_NAME}" \
+              --description "Docker images for ${INSTANCE_NAME}" \
               --project "${{ secrets.GCP_PROJECT_ID }}"
           fi
 
@@ -138,14 +141,24 @@ jobs:
         run: |
           docker push "${IMAGE_URI}"
 
-      - name: Deploy to Cloud Run
+      - name: Deploy to Compute Engine
+        shell: bash
         run: |
-          gcloud run deploy "${SERVICE_NAME}" \
-            --image "${IMAGE_URI}" \
-            --region "${REGION}" \
-            --platform managed \
-            --allow-unauthenticated \
-            --port 8000 \
-            --memory 2Gi \
-            --env-vars-file .cloudrun.env.yaml \
-            --quiet
+          if gcloud compute instances describe "${INSTANCE_NAME}" \
+              --zone "${ZONE}" \
+              --project "${{ secrets.GCP_PROJECT_ID }}" > /dev/null 2>&1; then
+            gcloud compute instances update-container "${INSTANCE_NAME}" \
+              --zone "${ZONE}" \
+              --container-image "${IMAGE_URI}" \
+              --container-env-file .gce.env \
+              --project "${{ secrets.GCP_PROJECT_ID }}"
+          else
+            gcloud compute instances create-with-container "${INSTANCE_NAME}" \
+              --zone "${ZONE}" \
+              --machine-type e2-medium \
+              --container-image "${IMAGE_URI}" \
+              --container-env-file .gce.env \
+              --container-restart-policy always \
+              --tags http-server,https-server \
+              --project "${{ secrets.GCP_PROJECT_ID }}"
+          fi
