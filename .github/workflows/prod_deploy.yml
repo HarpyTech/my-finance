@@ -215,7 +215,7 @@ jobs:
             labels:
               app: ${POD_NAME}
           spec:
-            replicas: 2
+            replicas: 1
             selector:
               matchLabels:
                 app: ${POD_NAME}
@@ -235,11 +235,11 @@ jobs:
                           name: ${SECRET_NAME}
                     resources:
                       requests:
-                        cpu: "250m"
-                        memory: "512Mi"
+                        cpu: "1500m"
+                        memory: "6Gi"
                       limits:
-                        cpu: "1000m"
-                        memory: "2Gi"
+                        cpu: "2000m"
+                        memory: "8Gi"
                     readinessProbe:
                       httpGet:
                         path: /health
