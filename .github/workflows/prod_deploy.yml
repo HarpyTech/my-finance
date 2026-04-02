@@ -1,4 +1,4 @@
-﻿name: Deploy to Compute Engine (main)
+﻿name: Deploy to GKE (main)
 
 on:
   push:
@@ -7,14 +7,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-compute-engine-${{ github.ref }}
+  group: deploy-gke-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  deploy-compute-engine:
+  deploy-gke:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,15 +31,79 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Build GCE container env file
+      - name: Resolve deploy parameters
+        shell: bash
+        run: |
+          REGION="${{ secrets.GCP_REGION }}"
+          if [ -z "${REGION}" ]; then
+            REGION="us-central1"
+          fi
+
+          CLUSTER_NAME="${{ secrets.GKE_CLUSTER_NAME }}"
+          if [ -z "${CLUSTER_NAME}" ]; then
+            CLUSTER_NAME="harpy-finance-dev"
+          fi
+
+          GKE_LOCATION="${{ secrets.GKE_LOCATION }}"
+          if [ -z "${GKE_LOCATION}" ]; then
+            GKE_LOCATION="${REGION}"
+          fi
+
+          K8S_NAMESPACE="${{ secrets.GKE_NAMESPACE }}"
+          if [ -z "${K8S_NAMESPACE}" ]; then
+            K8S_NAMESPACE="finance"
+          fi
+
+          APP_BASE_NAME="${{ secrets.GKE_APP_NAME }}"
+          if [ -z "${APP_BASE_NAME}" ]; then
+            APP_BASE_NAME="finance"
+          fi
+
+          POD_NAME="${APP_BASE_NAME}-pod"
+          SERVICE_NAME="${APP_BASE_NAME}-srv"
+          DEPLOYMENT_NAME="${APP_BASE_NAME}-deployment"
+          SECRET_NAME="${APP_BASE_NAME}-secrets"
+
+          AR_REPOSITORY="${CLUSTER_NAME}"
+          AR_HOST="${REGION}-docker.pkg.dev"
+          IMAGE_URI="${AR_HOST}/${{ secrets.GCP_PROJECT_ID }}/${AR_REPOSITORY}/${APP_BASE_NAME}:${{ github.sha }}"
+
+          echo "REGION=${REGION}" >> "$GITHUB_ENV"
+          echo "CLUSTER_NAME=${CLUSTER_NAME}" >> "$GITHUB_ENV"
+          echo "GKE_LOCATION=${GKE_LOCATION}" >> "$GITHUB_ENV"
+          echo "K8S_NAMESPACE=${K8S_NAMESPACE}" >> "$GITHUB_ENV"
+          echo "APP_BASE_NAME=${APP_BASE_NAME}" >> "$GITHUB_ENV"
+          echo "POD_NAME=${POD_NAME}" >> "$GITHUB_ENV"
+          echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
+          echo "DEPLOYMENT_NAME=${DEPLOYMENT_NAME}" >> "$GITHUB_ENV"
+          echo "SECRET_NAME=${SECRET_NAME}" >> "$GITHUB_ENV"
+          echo "AR_REPOSITORY=${AR_REPOSITORY}" >> "$GITHUB_ENV"
+          echo "AR_HOST=${AR_HOST}" >> "$GITHUB_ENV"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Validate GKE cluster exists
+        shell: bash
+        run: |
+          gcloud container clusters describe "${CLUSTER_NAME}" \
+            --location "${GKE_LOCATION}" \
+            --project "${{ secrets.GCP_PROJECT_ID }}" > /dev/null
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}
+          location: ${{ env.GKE_LOCATION }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Build Kubernetes env file
         shell: bash
         env:
-        #   APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
-        #   APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
+          APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
+          APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
           APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
           APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.APP_ACCESS_TOKEN_EXPIRE_MINUTES }}
-        #   APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
-        #   APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
+          APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
+          APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
           APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
           APP_MONGODB_URI: ${{ secrets.APP_MONGODB_URI }}
           APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
@@ -85,56 +149,9 @@ jobs:
           add_env("GEMINI_API_KEY", "APP_GEMINI_API_KEY")
           add_env("GEMINI_MODEL", "APP_GEMINI_MODEL")
 
-          with open(".gce.env", "w", encoding="utf-8") as f:
+          with open(".k8s.env", "w", encoding="utf-8") as f:
               f.write("\n".join(lines) + "\n")
           PY
-
-      - name: Resolve deploy parameters
-        shell: bash
-        run: |
-          REGION="${{ secrets.GCP_REGION }}"
-          if [ -z "${REGION}" ]; then
-            REGION="us-east1"
-          fi
-
-          PROJECT_ID="${{ secrets.GCP_PROJECT_ID }}"
-          ZONE="${{ secrets.GCP_ZONE }}"
-          if [ -z "${ZONE}" ]; then
-            ZONE=$(gcloud compute zones list \
-              --project "${PROJECT_ID}" \
-              --filter="region:(${REGION}) AND status=UP" \
-              --format="value(name)" \
-              | head -n 1)
-          fi
-
-          if [ -z "${ZONE}" ]; then
-            echo "ERROR: Could not find an available zone in region '${REGION}'. Set the GCP_ZONE secret explicitly (example: us-east1-b)." >&2
-            exit 1
-          fi
-
-          if ! gcloud compute zones describe "${ZONE}" --project "${PROJECT_ID}" > /dev/null 2>&1; then
-            echo "ERROR: Zone '${ZONE}' is invalid or inaccessible for project '${PROJECT_ID}'. Set GCP_ZONE to a valid zone you are allowed to use." >&2
-            exit 1
-          fi
-          INSTANCE_NAME="${{ secrets.GCE_INSTANCE_NAME }}"
-          if [ -z "${INSTANCE_NAME}" ]; then
-            INSTANCE_NAME="finance-prod"
-          elif [[ "${INSTANCE_NAME}" != *-prod ]]; then
-            INSTANCE_NAME="${INSTANCE_NAME}-prod"
-          fi
-
-          # Use the instance name as Artifact Registry repository name to avoid extra secrets.
-          AR_REPOSITORY="${INSTANCE_NAME}"
-
-          AR_HOST="${REGION}-docker.pkg.dev"
-          IMAGE_URI="${AR_HOST}/${{ secrets.GCP_PROJECT_ID }}/${AR_REPOSITORY}/${INSTANCE_NAME}:${{ github.sha }}"
-
-          echo "REGION=${REGION}" >> "$GITHUB_ENV"
-          echo "ZONE=${ZONE}" >> "$GITHUB_ENV"
-          echo "INSTANCE_NAME=${INSTANCE_NAME}" >> "$GITHUB_ENV"
-          echo "AR_REPOSITORY=${AR_REPOSITORY}" >> "$GITHUB_ENV"
-          echo "AR_HOST=${AR_HOST}" >> "$GITHUB_ENV"
-          echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
       - name: Ensure Artifact Registry repository exists
         shell: bash
@@ -143,7 +160,7 @@ jobs:
             gcloud artifacts repositories create "${AR_REPOSITORY}" \
               --repository-format=docker \
               --location "${REGION}" \
-              --description "Docker images for ${INSTANCE_NAME}" \
+                --description "Docker images for ${APP_BASE_NAME}" \
               --project "${{ secrets.GCP_PROJECT_ID }}"
           fi
 
@@ -159,24 +176,88 @@ jobs:
         run: |
           docker push "${IMAGE_URI}"
 
-      - name: Deploy to Compute Engine
+      - name: Ensure namespace exists
         shell: bash
         run: |
-          if gcloud compute instances describe "${INSTANCE_NAME}" \
-              --zone "${ZONE}" \
-              --project "${{ secrets.GCP_PROJECT_ID }}" > /dev/null 2>&1; then
-            gcloud compute instances update-container "${INSTANCE_NAME}" \
-              --zone "${ZONE}" \
-              --container-image "${IMAGE_URI}" \
-              --container-env-file .gce.env \
-              --project "${{ secrets.GCP_PROJECT_ID }}"
-          else
-            gcloud compute instances create-with-container "${INSTANCE_NAME}" \
-              --zone "${ZONE}" \
-              --machine-type e2-medium \
-              --container-image "${IMAGE_URI}" \
-              --container-env-file .gce.env \
-              --container-restart-policy always \
-              --tags http-server,https-server \
-              --project "${{ secrets.GCP_PROJECT_ID }}"
-          fi
+          kubectl get namespace "${K8S_NAMESPACE}" > /dev/null 2>&1 || kubectl create namespace "${K8S_NAMESPACE}"
+
+      - name: Create or update app secrets
+        shell: bash
+        run: |
+          kubectl -n "${K8S_NAMESPACE}" create secret generic "${SECRET_NAME}" \
+            --from-env-file=.k8s.env \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy workload to GKE
+        shell: bash
+        run: |
+          cat <<EOF | kubectl apply -n "${K8S_NAMESPACE}" -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: ${DEPLOYMENT_NAME}
+            labels:
+              app: ${POD_NAME}
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: ${POD_NAME}
+            template:
+              metadata:
+                labels:
+                  app: ${POD_NAME}
+              spec:
+                containers:
+                  - name: ${POD_NAME}
+                    image: ${IMAGE_URI}
+                    imagePullPolicy: Always
+                    ports:
+                      - containerPort: 8000
+                    envFrom:
+                      - secretRef:
+                          name: ${SECRET_NAME}
+                    resources:
+                      requests:
+                        cpu: "250m"
+                        memory: "512Mi"
+                      limits:
+                        cpu: "1000m"
+                        memory: "2Gi"
+                    readinessProbe:
+                      httpGet:
+                        path: /health
+                        port: 8000
+                      initialDelaySeconds: 10
+                      periodSeconds: 10
+                      timeoutSeconds: 2
+                      failureThreshold: 6
+                    livenessProbe:
+                      httpGet:
+                        path: /health
+                        port: 8000
+                      initialDelaySeconds: 30
+                      periodSeconds: 15
+                      timeoutSeconds: 2
+                      failureThreshold: 4
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: ${SERVICE_NAME}
+            labels:
+              app: ${POD_NAME}
+          spec:
+            selector:
+              app: ${POD_NAME}
+            ports:
+              - name: http
+                port: 80
+                targetPort: 8000
+            type: LoadBalancer
+          EOF
+
+      - name: Wait for rollout
+        shell: bash
+        run: |
+          kubectl rollout status deployment/"${DEPLOYMENT_NAME}" -n "${K8S_NAMESPACE}" --timeout=300s
