@@ -75,10 +75,18 @@ jobs:
             APP_BASE_NAME="finance"
           fi
 
+          HOSTNAME="${{ secrets.GKE_HOSTNAME }}"
+          if [ -z "${HOSTNAME}" ]; then
+            HOSTNAME="${APP_BASE_NAME}.harpytechco.in"
+          fi
+
+          MANAGED_CERT_NAME="${APP_BASE_NAME}-managed-cert"
+
           POD_NAME="${APP_BASE_NAME}-pod"
           SERVICE_NAME="${APP_BASE_NAME}-srv"
           DEPLOYMENT_NAME="${APP_BASE_NAME}-deployment"
           SECRET_NAME="${APP_BASE_NAME}-secrets"
+          INGRESS_NAME="${APP_BASE_NAME}-ingress"
 
           AR_REPOSITORY="${CLUSTER_NAME}"
           AR_HOST="${REGION}-docker.pkg.dev"
@@ -89,10 +97,13 @@ jobs:
           echo "GKE_LOCATION=${GKE_LOCATION}" >> "$GITHUB_ENV"
           echo "K8S_NAMESPACE=${K8S_NAMESPACE}" >> "$GITHUB_ENV"
           echo "APP_BASE_NAME=${APP_BASE_NAME}" >> "$GITHUB_ENV"
+          echo "HOSTNAME=${HOSTNAME}" >> "$GITHUB_ENV"
+          echo "MANAGED_CERT_NAME=${MANAGED_CERT_NAME}" >> "$GITHUB_ENV"
           echo "POD_NAME=${POD_NAME}" >> "$GITHUB_ENV"
           echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
           echo "DEPLOYMENT_NAME=${DEPLOYMENT_NAME}" >> "$GITHUB_ENV"
           echo "SECRET_NAME=${SECRET_NAME}" >> "$GITHUB_ENV"
+          echo "INGRESS_NAME=${INGRESS_NAME}" >> "$GITHUB_ENV"
           echo "AR_REPOSITORY=${AR_REPOSITORY}" >> "$GITHUB_ENV"
           echo "AR_HOST=${AR_HOST}" >> "$GITHUB_ENV"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
@@ -263,6 +274,9 @@ jobs:
             name: ${SERVICE_NAME}
             labels:
               app: ${POD_NAME}
+            annotations:
+              cloud.google.com/neg: '{"ingress": true}'
+              external-dns.alpha.kubernetes.io/hostname: ${HOSTNAME}.
           spec:
             selector:
               app: ${POD_NAME}
@@ -270,10 +284,64 @@ jobs:
               - name: http
                 port: 80
                 targetPort: 8000
-            type: LoadBalancer
+            type: ClusterIP
+          ---
+          apiVersion: networking.gke.io/v1
+          kind: ManagedCertificate
+          metadata:
+            name: ${MANAGED_CERT_NAME}
+          spec:
+            domains:
+              - ${HOSTNAME}
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: ${INGRESS_NAME}
+            annotations:
+              kubernetes.io/ingress.class: gce
+              kubernetes.io/ingress.allow-http: "true"
+              networking.gke.io/managed-certificates: ${MANAGED_CERT_NAME}
+              external-dns.alpha.kubernetes.io/hostname: ${HOSTNAME}.
+          spec:
+            rules:
+              - host: ${HOSTNAME}
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: ${SERVICE_NAME}
+                          port:
+                            number: 80
           EOF
 
       - name: Wait for rollout
         shell: bash
         run: |
           kubectl rollout status deployment/"${DEPLOYMENT_NAME}" -n "${K8S_NAMESPACE}" --timeout=300s
+
+      - name: Wait for ingress IP
+        shell: bash
+        run: |
+          for attempt in $(seq 1 30); do
+            INGRESS_IP=$(kubectl get ingress "${INGRESS_NAME}" -n "${K8S_NAMESPACE}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2> /dev/null)
+            if [ -n "${INGRESS_IP}" ]; then
+              echo "INGRESS_IP=${INGRESS_IP}" >> "$GITHUB_ENV"
+              echo "Ingress IP: ${INGRESS_IP}"
+              break
+            fi
+            echo "Waiting for ingress IP allocation..."
+            sleep 10
+          done
+
+      - name: Print DNS configuration
+        shell: bash
+        run: |
+          echo "Application hostname: ${HOSTNAME}"
+          if [ -n "${INGRESS_IP}" ]; then
+            echo "Create or update an A record pointing ${HOSTNAME} to ${INGRESS_IP}."
+          else
+            echo "Ingress IP is not ready yet. Re-run: kubectl get ingress ${INGRESS_NAME} -n ${K8S_NAMESPACE}"
+          fi
