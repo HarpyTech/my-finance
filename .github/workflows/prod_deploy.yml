@@ -49,6 +49,22 @@ jobs:
             GKE_LOCATION="${REGION}"
           fi
 
+          DISCOVERED_LOCATION=$(gcloud container clusters list \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --format="value(location)" \
+            --filter="name=${CLUSTER_NAME}" \
+            | head -n 1)
+
+          if [ -z "${DISCOVERED_LOCATION}" ]; then
+            echo "ERROR: Could not find GKE cluster '${CLUSTER_NAME}' in project '${{ secrets.GCP_PROJECT_ID }}'." >&2
+            exit 1
+          fi
+
+          if [ "${GKE_LOCATION}" != "${DISCOVERED_LOCATION}" ]; then
+            echo "Using discovered cluster location '${DISCOVERED_LOCATION}' instead of configured location '${GKE_LOCATION}'."
+            GKE_LOCATION="${DISCOVERED_LOCATION}"
+          fi
+
           K8S_NAMESPACE="${{ secrets.GKE_NAMESPACE }}"
           if [ -z "${K8S_NAMESPACE}" ]; then
             K8S_NAMESPACE="finance"
