@@ -1,5 +1,9 @@
-from pydantic_settings import BaseSettings
+import json
 import logging
+from typing import Any
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings
 
 # Configure logging before any other code runs
 logging.basicConfig(
@@ -32,6 +36,28 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
     BUILD_VERSION: str = "dev"
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip()
+        if not normalized:
+            return []
+
+        if normalized.startswith("["):
+            parsed = json.loads(normalized)
+            if not isinstance(parsed, list):
+                raise ValueError("CORS_ORIGINS JSON value must be a list of origins")
+            return [
+                origin.strip()
+                for origin in parsed
+                if isinstance(origin, str) and origin.strip()
+            ]
+
+        return [origin.strip() for origin in normalized.split(",") if origin.strip()]
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

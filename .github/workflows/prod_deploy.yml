@@ -80,13 +80,22 @@ jobs:
             HOSTNAME="${APP_BASE_NAME}.harpytechco.in"
           fi
 
+          STATIC_IP_NAME="${{ secrets.GKE_STATIC_IP_NAME }}"
+          if [ -z "${STATIC_IP_NAME}" ]; then
+            STATIC_IP_NAME="${APP_BASE_NAME}-ingress-ip"
+          fi
+
           MANAGED_CERT_NAME="${APP_BASE_NAME}-managed-cert"
+          FRONTEND_CONFIG_NAME="${APP_BASE_NAME}-frontend-config"
+          BACKEND_CONFIG_NAME="${APP_BASE_NAME}-backend-config"
 
           POD_NAME="${APP_BASE_NAME}-pod"
           SERVICE_NAME="${APP_BASE_NAME}-srv"
           DEPLOYMENT_NAME="${APP_BASE_NAME}-deployment"
           SECRET_NAME="${APP_BASE_NAME}-secrets"
           INGRESS_NAME="${APP_BASE_NAME}-ingress"
+          HPA_NAME="${APP_BASE_NAME}-hpa"
+          PDB_NAME="${APP_BASE_NAME}-pdb"
 
           AR_REPOSITORY="${CLUSTER_NAME}"
           AR_HOST="${REGION}-docker.pkg.dev"
@@ -98,15 +107,36 @@ jobs:
           echo "K8S_NAMESPACE=${K8S_NAMESPACE}" >> "$GITHUB_ENV"
           echo "APP_BASE_NAME=${APP_BASE_NAME}" >> "$GITHUB_ENV"
           echo "HOSTNAME=${HOSTNAME}" >> "$GITHUB_ENV"
+          echo "STATIC_IP_NAME=${STATIC_IP_NAME}" >> "$GITHUB_ENV"
           echo "MANAGED_CERT_NAME=${MANAGED_CERT_NAME}" >> "$GITHUB_ENV"
+          echo "FRONTEND_CONFIG_NAME=${FRONTEND_CONFIG_NAME}" >> "$GITHUB_ENV"
+          echo "BACKEND_CONFIG_NAME=${BACKEND_CONFIG_NAME}" >> "$GITHUB_ENV"
           echo "POD_NAME=${POD_NAME}" >> "$GITHUB_ENV"
           echo "SERVICE_NAME=${SERVICE_NAME}" >> "$GITHUB_ENV"
           echo "DEPLOYMENT_NAME=${DEPLOYMENT_NAME}" >> "$GITHUB_ENV"
           echo "SECRET_NAME=${SECRET_NAME}" >> "$GITHUB_ENV"
           echo "INGRESS_NAME=${INGRESS_NAME}" >> "$GITHUB_ENV"
+          echo "HPA_NAME=${HPA_NAME}" >> "$GITHUB_ENV"
+          echo "PDB_NAME=${PDB_NAME}" >> "$GITHUB_ENV"
           echo "AR_REPOSITORY=${AR_REPOSITORY}" >> "$GITHUB_ENV"
           echo "AR_HOST=${AR_HOST}" >> "$GITHUB_ENV"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Ensure global static IP exists
+        shell: bash
+        run: |
+          if ! gcloud compute addresses describe "${STATIC_IP_NAME}" --global --project "${{ secrets.GCP_PROJECT_ID }}" > /dev/null 2>&1; then
+            gcloud compute addresses create "${STATIC_IP_NAME}" \
+              --global \
+              --project "${{ secrets.GCP_PROJECT_ID }}"
+          fi
+
+          STATIC_IP=$(gcloud compute addresses describe "${STATIC_IP_NAME}" \
+            --global \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --format='value(address)')
+
+          echo "STATIC_IP=${STATIC_IP}" >> "$GITHUB_ENV"
 
       - name: Validate GKE cluster exists
         shell: bash
@@ -226,7 +256,12 @@ jobs:
             labels:
               app: ${POD_NAME}
           spec:
-            replicas: 1
+            replicas: 2
+            strategy:
+              type: RollingUpdate
+              rollingUpdate:
+                maxSurge: 1
+                maxUnavailable: 0
             selector:
               matchLabels:
                 app: ${POD_NAME}
@@ -235,6 +270,7 @@ jobs:
                 labels:
                   app: ${POD_NAME}
               spec:
+                terminationGracePeriodSeconds: 30
                 containers:
                   - name: ${POD_NAME}
                     image: ${IMAGE_URI}
@@ -246,11 +282,11 @@ jobs:
                           name: ${SECRET_NAME}
                     resources:
                       requests:
-                        cpu: "1500m"
-                        memory: "6Gi"
+                        cpu: "250m"
+                        memory: "256Mi"
                       limits:
-                        cpu: "2000m"
-                        memory: "8Gi"
+                        cpu: "1000m"
+                        memory: "512Mi"
                     readinessProbe:
                       httpGet:
                         path: /health
@@ -276,6 +312,7 @@ jobs:
               app: ${POD_NAME}
             annotations:
               cloud.google.com/neg: '{"ingress": true}'
+              cloud.google.com/backend-config: '{"default":"${BACKEND_CONFIG_NAME}"}'
               external-dns.alpha.kubernetes.io/hostname: ${HOSTNAME}.
           spec:
             selector:
@@ -286,6 +323,21 @@ jobs:
                 targetPort: 8000
             type: ClusterIP
           ---
+          apiVersion: cloud.google.com/v1
+          kind: BackendConfig
+          metadata:
+            name: ${BACKEND_CONFIG_NAME}
+          spec:
+            timeoutSec: 60
+            healthCheck:
+              type: HTTP
+              requestPath: /health
+              port: 8000
+              checkIntervalSec: 15
+              timeoutSec: 5
+              healthyThreshold: 1
+              unhealthyThreshold: 3
+          ---
           apiVersion: networking.gke.io/v1
           kind: ManagedCertificate
           metadata:
@@ -294,14 +346,24 @@ jobs:
             domains:
               - ${HOSTNAME}
           ---
+          apiVersion: networking.gke.io/v1beta1
+          kind: FrontendConfig
+          metadata:
+            name: ${FRONTEND_CONFIG_NAME}
+          spec:
+            redirectToHttps:
+              enabled: true
+          ---
           apiVersion: networking.k8s.io/v1
           kind: Ingress
           metadata:
             name: ${INGRESS_NAME}
             annotations:
               kubernetes.io/ingress.class: gce
+              kubernetes.io/ingress.global-static-ip-name: ${STATIC_IP_NAME}
               kubernetes.io/ingress.allow-http: "true"
               networking.gke.io/managed-certificates: ${MANAGED_CERT_NAME}
+              networking.gke.io/v1beta1.FrontendConfig: ${FRONTEND_CONFIG_NAME}
               external-dns.alpha.kubernetes.io/hostname: ${HOSTNAME}.
           spec:
             rules:
@@ -315,6 +377,41 @@ jobs:
                           name: ${SERVICE_NAME}
                           port:
                             number: 80
+          ---
+          apiVersion: policy/v1
+          kind: PodDisruptionBudget
+          metadata:
+            name: ${PDB_NAME}
+          spec:
+            minAvailable: 1
+            selector:
+              matchLabels:
+                app: ${POD_NAME}
+          ---
+          apiVersion: autoscaling/v2
+          kind: HorizontalPodAutoscaler
+          metadata:
+            name: ${HPA_NAME}
+          spec:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: ${DEPLOYMENT_NAME}
+            minReplicas: 2
+            maxReplicas: 5
+            metrics:
+              - type: Resource
+                resource:
+                  name: cpu
+                  target:
+                    type: Utilization
+                    averageUtilization: 70
+              - type: Resource
+                resource:
+                  name: memory
+                  target:
+                    type: Utilization
+                    averageUtilization: 75
           EOF
 
       - name: Wait for rollout
@@ -336,12 +433,32 @@ jobs:
             sleep 10
           done
 
+      - name: Wait for managed certificate
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            CERT_STATUS=$(kubectl get managedcertificate "${MANAGED_CERT_NAME}" -n "${K8S_NAMESPACE}" -o jsonpath='{.status.certificateStatus}' 2> /dev/null)
+            if [ "${CERT_STATUS}" = "Active" ]; then
+              echo "Managed certificate is active."
+              exit 0
+            fi
+            echo "Managed certificate status: ${CERT_STATUS:-pending}"
+            sleep 10
+          done
+
+          echo "Managed certificate is still provisioning. HTTPS may not be ready yet."
+
       - name: Print DNS configuration
         shell: bash
         run: |
           echo "Application hostname: ${HOSTNAME}"
+          echo "Reserved global IP: ${STATIC_IP}"
           if [ -n "${INGRESS_IP}" ]; then
-            echo "Create or update an A record pointing ${HOSTNAME} to ${INGRESS_IP}."
+            echo "Ingress IP: ${INGRESS_IP}"
+            echo "Create or update an A record pointing ${HOSTNAME} to ${STATIC_IP}."
           else
-            echo "Ingress IP is not ready yet. Re-run: kubectl get ingress ${INGRESS_NAME} -n ${K8S_NAMESPACE}"
+            echo "Ingress IP is not ready yet. The reserved global IP is ${STATIC_IP}."
+            echo "Re-run: kubectl get ingress ${INGRESS_NAME} -n ${K8S_NAMESPACE}"
           fi
+          echo "Managed certificate: ${MANAGED_CERT_NAME}"
+          echo "HTTPS will serve once DNS resolves to the reserved IP and the managed certificate becomes Active."
