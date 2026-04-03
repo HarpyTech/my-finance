@@ -18,6 +18,7 @@ _ALLOWED_BILL_TYPES = {"grocery", "restaurant", "service", "utility", "other"}
 _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?|```", re.IGNORECASE)
 _JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 _MAX_OUTPUT_TOKENS = 512
+_MAX_JSON_RETRIES = 2
 _gemini_model: genai.GenerativeModel | None = None
 
 
@@ -57,12 +58,55 @@ Required JSON shape:
 }
 
 Rules:
-- Return JSON only, no markdown.
+- Return a single JSON object only.
+- Do not wrap output in markdown/code fences.
+- Do not include comments, explanation, or extra keys.
 - If a field is unknown, use reasonable defaults.
 - amount must reflect the final paid total.
 - line_items can be an empty list.
 - expense_date must be a valid date in YYYY-MM-DD.
 - Keep all tax_details numeric (use 0 when missing).
+""".strip()
+
+_JSON_REPAIR_TEMPLATE = """
+The previous output was not valid JSON for this task.
+Return ONLY one corrected JSON object that matches the exact schema below.
+No markdown, no code fences, no explanation.
+
+Schema:
+{
+    "amount": number,
+    "category": string,
+    "bill_type": "grocery" | "restaurant" | "service" | "utility" | "other",
+    "invoice_number": string,
+    "vendor": string,
+    "description": string,
+    "expense_date": "YYYY-MM-DD",
+    "tax_details": {
+        "subtotal": number,
+        "tax": number,
+        "cgst": number,
+        "sgst": number,
+        "igst": number,
+        "vat": number,
+        "service_tax": number,
+        "cess": number,
+        "tip": number,
+        "discount": number,
+        "total_tax": number
+    },
+    "line_items": [
+        {
+            "name": string,
+            "quantity": number,
+            "unit_price": number,
+            "total": number
+        }
+    ]
+}
+
+Previous model output:
+{bad_output}
 """.strip()
 
 
@@ -91,17 +135,7 @@ def extract_expense_payload(
             }
         )
 
-    logger.info("Calling Gemini model for expense extraction")
-    response = model.generate_content(
-        prompt_parts,
-        generation_config=genai.GenerationConfig(max_output_tokens=_MAX_OUTPUT_TOKENS),
-    )
-    raw_text = (getattr(response, "text", "") or "").strip()
-
-    if not raw_text:
-        raise RuntimeError("Gemini returned an empty response")
-
-    parsed = _parse_json_from_model(raw_text)
+    parsed = _generate_and_parse_json_with_retries(model, prompt_parts)
     normalized = _normalize_payload(parsed, text_input=text_input)
 
     logger.info("Expense extraction completed successfully")
@@ -123,6 +157,66 @@ def _get_model() -> genai.GenerativeModel:
     return _gemini_model
 
 
+def _generate_and_parse_json_with_retries(
+    model: genai.GenerativeModel,
+    prompt_parts: list[Any],
+) -> dict[str, Any]:
+    """Generate JSON output and retry model-based repair up to max retries."""
+    logger.info("Calling Gemini model for expense extraction")
+    raw_text = _generate_model_text(model, prompt_parts)
+
+    try:
+        return _parse_json_from_model(raw_text)
+    except (json.JSONDecodeError, RuntimeError) as first_error:
+        logger.warning(
+            "Initial model output was not valid JSON: %s",
+            first_error,
+        )
+
+    latest_output = raw_text
+    for retry_index in range(1, _MAX_JSON_RETRIES + 1):
+        logger.info(
+            "Retrying JSON extraction with model-based repair (%s/%s)",
+            retry_index,
+            _MAX_JSON_RETRIES,
+        )
+        latest_output = _generate_model_text(
+            model,
+            [_JSON_REPAIR_TEMPLATE.format(bad_output=latest_output)],
+        )
+
+        try:
+            return _parse_json_from_model(latest_output)
+        except (json.JSONDecodeError, RuntimeError) as retry_error:
+            logger.warning(
+                "JSON compatibility retry %s/%s failed: %s",
+                retry_index,
+                _MAX_JSON_RETRIES,
+                retry_error,
+            )
+
+    raise RuntimeError("Could not obtain valid JSON from Gemini after 2 retries")
+
+
+def _generate_model_text(
+    model: genai.GenerativeModel,
+    parts: list[Any],
+) -> str:
+    """Generate raw text from Gemini with JSON-oriented settings."""
+    response = model.generate_content(
+        parts,
+        generation_config=genai.GenerationConfig(
+            max_output_tokens=_MAX_OUTPUT_TOKENS,
+            response_mime_type="application/json",
+        ),
+    )
+
+    raw_text = (getattr(response, "text", "") or "").strip()
+    if not raw_text:
+        raise RuntimeError("Gemini returned an empty response")
+    return raw_text
+
+
 def _parse_json_from_model(raw_text: str) -> dict[str, Any]:
     """Extract JSON object from model output text."""
     cleaned = _CODE_FENCE_PATTERN.sub("", raw_text).strip()
@@ -133,6 +227,7 @@ def _parse_json_from_model(raw_text: str) -> dict[str, Any]:
 
     match = _JSON_OBJECT_PATTERN.search(cleaned)
     if not match:
+        logger.warning(f"No JSON object found in model output: {raw_text}")
         raise RuntimeError("Could not find a JSON object in model output")
 
     return json.loads(match.group(0))
