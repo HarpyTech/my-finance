@@ -26,6 +26,7 @@ def add_expense(
     vendor: str,
     description: str,
     expense_date: date,
+    llm_model: str | None = None,
     tax_details: dict | None = None,
     line_items: list[dict] | None = None,
 ):
@@ -44,6 +45,7 @@ def add_expense(
             invoice_number,
             description,
         )
+        normalized_llm_model = (llm_model or "").strip() or None
 
         doc = {
             "username": username,
@@ -55,6 +57,7 @@ def add_expense(
             "vendor": vendor.strip(),
             "description": description.strip(),
             "expense_date": _as_mongo_datetime(expense_date),
+            "llm_model": normalized_llm_model,
             "tax_details": normalized_tax,
             "line_items_count": len(normalized_items),
         }
@@ -89,6 +92,7 @@ def add_expense(
             "vendor": doc["vendor"],
             "description": doc["description"],
             "expense_date": expense_date.isoformat(),
+            "llm_model": doc["llm_model"],
             "tax_details": doc["tax_details"],
             "line_items": normalized_items,
         }
@@ -162,6 +166,7 @@ def list_expenses(username: str):
                 "vendor": doc.get("vendor", ""),
                 "description": doc.get("description", ""),
                 "expense_date": doc["expense_date"].isoformat(),
+                "llm_model": doc.get("llm_model"),
                 "tax_details": _normalize_tax_details(doc.get("tax_details")),
                 "line_items": line_items_map.get(str(doc["_id"]), []),
             }

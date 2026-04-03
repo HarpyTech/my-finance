@@ -19,7 +19,13 @@ _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?|```", re.IGNORECASE)
 _JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 _MAX_OUTPUT_TOKENS = 512
 _MAX_JSON_RETRIES = 2
-_gemini_model: genai.GenerativeModel | None = None
+_SUPPORTED_GEMINI_MODELS = (
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3-flash-preview",
+    "gemini-3.1-pro-preview",
+)
+_gemini_models: dict[str, genai.GenerativeModel] = {}
 
 
 PROMPT_TEMPLATE = """
@@ -106,7 +112,7 @@ Schema:
 }
 
 Previous model output:
-{bad_output}
+__BAD_OUTPUT__
 """.strip()
 
 
@@ -114,12 +120,14 @@ def extract_expense_payload(
     text_input: str | None,
     image_bytes: bytes | None,
     image_mime_type: str | None,
-) -> dict[str, Any]:
+    llm_model: str | None = None,
+) -> tuple[dict[str, Any], str]:
     """Extract and normalize expense payload from text and/or image."""
     if not text_input and not image_bytes:
         raise ValueError("Provide either text_input or an image")
 
-    model = _get_model()
+    model_name = _resolve_model_name(llm_model)
+    model = _get_model(model_name)
 
     prompt_parts: list[Any] = [PROMPT_TEMPLATE]
     if text_input:
@@ -138,23 +146,40 @@ def extract_expense_payload(
     parsed = _generate_and_parse_json_with_retries(model, prompt_parts)
     normalized = _normalize_payload(parsed, text_input=text_input)
 
-    logger.info("Expense extraction completed successfully")
-    return normalized
+    logger.info(
+        "Expense extraction completed successfully using model '%s'",
+        model_name,
+    )
+    return normalized, model_name
 
 
-def _get_model() -> genai.GenerativeModel:
+def _resolve_model_name(requested_model: str | None) -> str:
+    model_name = (requested_model or settings.GEMINI_MODEL or "").strip()
+    if not model_name:
+        raise RuntimeError("GEMINI_MODEL is not configured")
+
+    if model_name not in _SUPPORTED_GEMINI_MODELS:
+        raise ValueError(
+            "Unsupported llm_model. Allowed values: "
+            + ", ".join(_SUPPORTED_GEMINI_MODELS)
+        )
+
+    return model_name
+
+
+def _get_model(model_name: str) -> genai.GenerativeModel:
     """Lazily initialize Gemini model with configured credentials."""
-    global _gemini_model
-
-    if _gemini_model is not None:
-        return _gemini_model
+    cached = _gemini_models.get(model_name)
+    if cached is not None:
+        return cached
 
     if not settings.GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    _gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL)
-    return _gemini_model
+    instance = genai.GenerativeModel(model_name)
+    _gemini_models[model_name] = instance
+    return instance
 
 
 def _generate_and_parse_json_with_retries(
@@ -182,7 +207,12 @@ def _generate_and_parse_json_with_retries(
         )
         latest_output = _generate_model_text(
             model,
-            [_JSON_REPAIR_TEMPLATE.format(bad_output=latest_output)],
+            [
+                _JSON_REPAIR_TEMPLATE.replace(
+                    "__BAD_OUTPUT__",
+                    latest_output,
+                )
+            ],
         )
 
         try:

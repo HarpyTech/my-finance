@@ -12,7 +12,7 @@ from fastapi import (
 import logging
 
 from app.api.deps import get_current_user
-from app.models.expense import ExpenseCreate, ExpenseInputType
+from app.models.expense import ExpenseCreate, ExpenseInputType, ExpenseLlmModel
 from app.services.expense_service import (
     add_expense,
     category_summary,
@@ -71,6 +71,7 @@ async def extract_and_create_expense(
     text_input: str | None = Form(default=None),
     image: UploadFile | None = File(default=None),
     input_type: ExpenseInputType | None = Form(default=None),
+    llm_model: ExpenseLlmModel | None = Form(default=None),
     user: str = Depends(get_current_user),
 ):
     """Extract expense details with Gemini and insert into DB."""
@@ -82,14 +83,18 @@ async def extract_and_create_expense(
             if len(image_bytes) > _MAX_IMAGE_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Image exceeds the {_MAX_IMAGE_BYTES // (1024 * 1024)} MB limit",
+                    detail=(
+                        "Image exceeds the "
+                        f"{_MAX_IMAGE_BYTES // (1024 * 1024)} MB limit"
+                    ),
                 )
 
         mime_type = image.content_type if image else None
-        extracted = extract_expense_payload(
+        extracted, used_llm_model = extract_expense_payload(
             text_input=text_input,
             image_bytes=image_bytes,
             image_mime_type=mime_type,
+            llm_model=llm_model,
         )
         del image_bytes  # free original bytes early to reduce peak memory
 
@@ -98,11 +103,12 @@ async def extract_and_create_expense(
             amount=extracted["amount"],
             category=extracted["category"],
             bill_type=extracted["bill_type"],
-            input_type=input_type or _infer_input_type(text_input, image is not None),
+            input_type=(input_type or _infer_input_type(text_input, image is not None)),
             invoice_number=extracted["invoice_number"],
             vendor=extracted["vendor"],
             description=extracted["description"],
             expense_date=date.fromisoformat(extracted["expense_date"]),
+            llm_model=used_llm_model,
             tax_details=extracted["tax_details"],
             line_items=extracted["line_items"],
         )
@@ -111,6 +117,7 @@ async def extract_and_create_expense(
         return {
             "expense": result,
             "extracted": extracted,
+            "llm_model": used_llm_model,
         }
     except ValueError as exc:
         logger.warning(f"Invalid extract-and-create request: {str(exc)}")
