@@ -29,91 +29,68 @@ _gemini_models: dict[str, genai.GenerativeModel] = {}
 
 
 PROMPT_TEMPLATE = """
-Extract expense details and return ONLY valid JSON.
+                Help me organize this purchase info. I need it in JSON format so I can track my spending.
 
-Required JSON shape:
-{
-  "amount": number,
-  "category": string,
-  "bill_type": "grocery" | "restaurant" | "service" | "utility" | "other",
-    "invoice_number": string,
-  "vendor": string,
-  "description": string,
-  "expense_date": "YYYY-MM-DD",
-    "tax_details": {
-        "subtotal": number,
-        "tax": number,
-        "cgst": number,
-        "sgst": number,
-        "igst": number,
-        "vat": number,
-        "service_tax": number,
-        "cess": number,
-        "tip": number,
-        "discount": number,
-        "total_tax": number
-    },
-  "line_items": [
-    {
-      "name": string,
-      "quantity": number,
-      "unit_price": number,
-      "total": number
-    }
-  ]
-}
+                Here's the structure I need:
+                {
+                    "amount": the total amount paid,
+                    "category": what type of purchase,
+                    "bill_type": one of: grocery, restaurant, service, utility, or other,
+                    "invoice_number": any receipt or transaction number,
+                    "vendor": the store or business name,
+                    "description": what was purchased,
+                    "expense_date": the date in YYYY-MM-DD format,
+                    "tax_details": {
+                        "subtotal": 0,
+                        "tax": 0,
+                        "cgst": 0,
+                        "sgst": 0,
+                        "igst": 0,
+                        "vat": 0,
+                        "service_tax": 0,
+                        "cess": 0,
+                        "tip": 0,
+                        "discount": 0,
+                        "total_tax": 0
+                    },
+                    "line_items": []
+                }
 
-Rules:
-- Return a single JSON object only.
-- Do not wrap output in markdown/code fences.
-- Do not include comments, explanation, or extra keys.
-- If a field is unknown, use reasonable defaults.
-- amount must reflect the final paid total.
-- line_items can be an empty list.
-- expense_date must be a valid date in YYYY-MM-DD.
-- Keep all tax_details numeric (use 0 when missing).
+                Just give me back the JSON. If you're not sure about a value, use 0 for numbers or empty string for text.
 """.strip()
 
 _JSON_REPAIR_TEMPLATE = """
-The previous output was not valid JSON for this task.
-Return ONLY one corrected JSON object that matches the exact schema below.
-No markdown, no code fences, no explanation.
+    That output didn't quite work. Can you try again? Here's what I need:
 
-Schema:
 {
-    "amount": number,
-    "category": string,
-    "bill_type": "grocery" | "restaurant" | "service" | "utility" | "other",
-    "invoice_number": string,
-    "vendor": string,
-    "description": string,
-    "expense_date": "YYYY-MM-DD",
-    "tax_details": {
-        "subtotal": number,
-        "tax": number,
-        "cgst": number,
-        "sgst": number,
-        "igst": number,
-        "vat": number,
-        "service_tax": number,
-        "cess": number,
-        "tip": number,
-        "discount": number,
-        "total_tax": number
-    },
-    "line_items": [
-        {
-            "name": string,
-            "quantity": number,
-            "unit_price": number,
-            "total": number
-        }
-    ]
+  "amount": number,
+  "category": string,
+  "bill_type": "grocery" or "restaurant" or "service" or "utility" or "other",
+  "invoice_number": string,
+  "vendor": string,
+  "description": string,
+  "expense_date": "YYYY-MM-DD",
+  "tax_details": {
+    "subtotal": number,
+    "tax": number,
+    "cgst": number,
+    "sgst": number,
+    "igst": number,
+    "vat": number,
+    "service_tax": number,
+    "cess": number,
+    "tip": number,
+    "discount": number,
+    "total_tax": number
+  },
+  "line_items": []
 }
 
-Previous model output:
+    Just the JSON, please.
+
+Previous attempt:
 __BAD_OUTPUT__
-""".strip()
+    """.strip()
 
 
 def extract_expense_payload(
@@ -232,18 +209,29 @@ def _generate_model_text(
     model: genai.GenerativeModel,
     parts: list[Any],
 ) -> str:
-    """Generate raw text from Gemini with JSON-oriented settings."""
+    """Generate raw text from Gemini with soft generation settings."""
     response = model.generate_content(
         parts,
         generation_config=genai.GenerationConfig(
-            max_output_tokens=_MAX_OUTPUT_TOKENS,
-            response_mime_type="application/json",
+            max_output_tokens=256,
+            temperature=0.0,
         ),
     )
 
+    if response.candidates and response.candidates[0].finish_reason == 2:
+        raise RuntimeError(
+            "Gemini response was blocked/filtered. "
+            "Try adjusting the prompt or input."
+        )
+
     raw_text = (getattr(response, "text", "") or "").strip()
     if not raw_text:
-        raise RuntimeError("Gemini returned an empty response")
+        finish_reason = (
+            response.candidates[0].finish_reason if response.candidates else "N/A"
+        )
+        raise RuntimeError(
+            "Gemini returned an empty response. " f"finish_reason: {finish_reason}"
+        )
     return raw_text
 
 
