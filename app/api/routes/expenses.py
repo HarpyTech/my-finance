@@ -10,6 +10,7 @@ from fastapi import (
     status,
 )
 import logging
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_user
 from app.models.expense import ExpenseCreate, ExpenseInputType, ExpenseLlmModel
@@ -63,7 +64,7 @@ def create_expense(
         raise
 
 
-_MAX_IMAGE_BYTES = 6 * 1024 * 1024  # 6 MB
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/extract-and-create", status_code=201)
@@ -77,10 +78,11 @@ async def extract_and_create_expense(
     """Extract expense details with Gemini and insert into DB."""
     logger.info("Extract-and-create expense request received")
     try:
-        image_bytes: bytes | None = None
+        raw_image_bytes: bytes | None = None
         if image is not None:
-            image_bytes = await image.read(_MAX_IMAGE_BYTES + 1)
-            if len(image_bytes) > _MAX_IMAGE_BYTES:
+            # Keep upload untouched: read and forward original bytes as-is.
+            raw_image_bytes = await image.read(_MAX_IMAGE_BYTES + 1)
+            if len(raw_image_bytes) > _MAX_IMAGE_BYTES:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     detail=(
@@ -90,15 +92,17 @@ async def extract_and_create_expense(
                 )
 
         mime_type = image.content_type if image else None
-        extracted, used_llm_model = extract_expense_payload(
+        extracted, used_llm_model = await run_in_threadpool(
+            extract_expense_payload,
             text_input=text_input,
-            image_bytes=image_bytes,
+            image_bytes=raw_image_bytes,
             image_mime_type=mime_type,
             llm_model=llm_model,
         )
-        del image_bytes  # free original bytes early to reduce peak memory
+        del raw_image_bytes  # free original bytes early to reduce peak memory
 
-        result = add_expense(
+        result = await run_in_threadpool(
+            add_expense,
             username=user,
             amount=extracted["amount"],
             category=extracted["category"],

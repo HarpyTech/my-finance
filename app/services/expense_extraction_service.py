@@ -219,9 +219,9 @@ def _generate_model_text(
     )
 
     if response.candidates and response.candidates[0].finish_reason == 2:
-        raise RuntimeError(
+        raise ValueError(
             "Gemini response was blocked/filtered. "
-            "Try adjusting the prompt or input."
+            "Try a clearer image or provide text_input instead."
         )
 
     raw_text = (getattr(response, "text", "") or "").strip()
