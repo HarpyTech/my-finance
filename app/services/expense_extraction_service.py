@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from io import BytesIO
 import json
 import logging
 import re
 from typing import Any
 
 import google.generativeai as genai
+from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
 
 from app.core.config import settings
@@ -53,7 +55,7 @@ PROMPT_TEMPLATE = """
                         "discount": 0,
                         "total_tax": 0
                     },
-                    "line_items": []
+                    "line_items": [List of sub expenses / items along with their individual price]
                 }
 
                 Just give me back the JSON. If you're not sure about a value, use 0 for numbers or empty string for text.
@@ -113,12 +115,7 @@ def extract_expense_payload(
     if image_bytes:
         if image_mime_type and not image_mime_type.startswith("image/"):
             raise ValueError("Only image uploads are supported")
-        prompt_parts.append(
-            {
-                "mime_type": image_mime_type or "image/jpeg",
-                "data": image_bytes,
-            }
-        )
+        prompt_parts.append(_load_image(image_bytes))
 
     parsed = _generate_and_parse_json_with_retries(model, prompt_parts)
     normalized = _normalize_payload(parsed, text_input=text_input)
@@ -209,14 +206,8 @@ def _generate_model_text(
     model: genai.GenerativeModel,
     parts: list[Any],
 ) -> str:
-    """Generate raw text from Gemini with soft generation settings."""
-    response = model.generate_content(
-        parts,
-        generation_config=genai.GenerationConfig(
-            max_output_tokens=256,
-            temperature=0.0,
-        ),
-    )
+    """Generate raw text from Gemini."""
+    response = model.generate_content(parts)
 
     if response.candidates and response.candidates[0].finish_reason == 2:
         raise ValueError(
@@ -233,6 +224,16 @@ def _generate_model_text(
             "Gemini returned an empty response. " f"finish_reason: {finish_reason}"
         )
     return raw_text
+
+
+def _load_image(image_bytes: bytes) -> Image.Image:
+    """Load raw uploaded image bytes into a PIL image without preprocessing."""
+    try:
+        image = Image.open(BytesIO(image_bytes))
+        image.load()
+        return image
+    except UnidentifiedImageError as exc:
+        raise ValueError("Uploaded file is not a valid image") from exc
 
 
 def _parse_json_from_model(raw_text: str) -> dict[str, Any]:
