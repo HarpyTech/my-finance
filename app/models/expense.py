@@ -12,6 +12,12 @@ ExpenseInputType = Literal[
     "camera",
     "mixed",
 ]
+ExpenseLlmModel = Literal[
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3-flash-preview",
+    "gemini-3.1-pro-preview",
+]
 
 
 class ExpenseLineItem(BaseModel):
@@ -58,5 +64,6 @@ class ExpenseItem(BaseModel):
     vendor: str
     description: str
     expense_date: date
+    llm_model: ExpenseLlmModel | None = None
     tax_details: ExpenseTaxDetails = Field(default_factory=ExpenseTaxDetails)
     line_items: list[ExpenseLineItem] = Field(default_factory=list)

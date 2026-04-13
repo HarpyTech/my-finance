@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from io import BytesIO
 import json
 import logging
 import re
 from typing import Any
 
 import google.generativeai as genai
+from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
 
 from app.core.config import settings
@@ -18,64 +20,93 @@ _ALLOWED_BILL_TYPES = {"grocery", "restaurant", "service", "utility", "other"}
 _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?|```", re.IGNORECASE)
 _JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 _MAX_OUTPUT_TOKENS = 512
-_gemini_model: genai.GenerativeModel | None = None
+_MAX_JSON_RETRIES = 2
+_SUPPORTED_GEMINI_MODELS = (
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3-flash-preview",
+    "gemini-3.1-pro-preview",
+)
+_gemini_models: dict[str, genai.GenerativeModel] = {}
 
 
 PROMPT_TEMPLATE = """
-Extract expense details and return ONLY valid JSON.
+                Help me organize this purchase info. I need it in JSON format so I can track my spending.
 
-Required JSON shape:
+                Here's the structure I need:
+                {
+                    "amount": the total amount paid,
+                    "category": what type of purchase,
+                    "bill_type": one of: grocery, restaurant, service, utility, or other,
+                    "invoice_number": any receipt or transaction number,
+                    "vendor": the store or business name,
+                    "description": what was purchased,
+                    "expense_date": the date in YYYY-MM-DD format,
+                    "tax_details": {
+                        "subtotal": 0,
+                        "tax": 0,
+                        "cgst": 0,
+                        "sgst": 0,
+                        "igst": 0,
+                        "vat": 0,
+                        "service_tax": 0,
+                        "cess": 0,
+                        "tip": 0,
+                        "discount": 0,
+                        "total_tax": 0
+                    },
+                    "line_items": [List of sub expenses / items along with their individual price]
+                }
+
+                Just give me back the JSON. If you're not sure about a value, use 0 for numbers or empty string for text.
+""".strip()
+
+_JSON_REPAIR_TEMPLATE = """
+    That output didn't quite work. Can you try again? Here's what I need:
+
 {
   "amount": number,
   "category": string,
-  "bill_type": "grocery" | "restaurant" | "service" | "utility" | "other",
-    "invoice_number": string,
+  "bill_type": "grocery" or "restaurant" or "service" or "utility" or "other",
+  "invoice_number": string,
   "vendor": string,
   "description": string,
   "expense_date": "YYYY-MM-DD",
-    "tax_details": {
-        "subtotal": number,
-        "tax": number,
-        "cgst": number,
-        "sgst": number,
-        "igst": number,
-        "vat": number,
-        "service_tax": number,
-        "cess": number,
-        "tip": number,
-        "discount": number,
-        "total_tax": number
-    },
-  "line_items": [
-    {
-      "name": string,
-      "quantity": number,
-      "unit_price": number,
-      "total": number
-    }
-  ]
+  "tax_details": {
+    "subtotal": number,
+    "tax": number,
+    "cgst": number,
+    "sgst": number,
+    "igst": number,
+    "vat": number,
+    "service_tax": number,
+    "cess": number,
+    "tip": number,
+    "discount": number,
+    "total_tax": number
+  },
+  "line_items": []
 }
 
-Rules:
-- Return JSON only, no markdown.
-- If a field is unknown, use reasonable defaults.
-- amount must reflect the final paid total.
-- line_items can be an empty list.
-- expense_date must be a valid date in YYYY-MM-DD.
-- Keep all tax_details numeric (use 0 when missing).
-""".strip()
+    Just the JSON, please.
+
+Previous attempt:
+__BAD_OUTPUT__
+    """.strip()
 
 
 def extract_expense_payload(
     text_input: str | None,
     image_bytes: bytes | None,
     image_mime_type: str | None,
-) -> dict[str, Any]:
+    llm_model: str | None = None,
+) -> tuple[dict[str, Any], str]:
     """Extract and normalize expense payload from text and/or image."""
     if not text_input and not image_bytes:
         raise ValueError("Provide either text_input or an image")
 
-    model = _get_model()
+    model_name = _resolve_model_name(llm_model)
+    model = _get_model(model_name)
 
     prompt_parts: list[Any] = [PROMPT_TEMPLATE]
     if text_input:
@@ -84,43 +115,125 @@ def extract_expense_payload(
     if image_bytes:
         if image_mime_type and not image_mime_type.startswith("image/"):
             raise ValueError("Only image uploads are supported")
-        prompt_parts.append(
-            {
-                "mime_type": image_mime_type or "image/jpeg",
-                "data": image_bytes,
-            }
-        )
+        prompt_parts.append(_load_image(image_bytes))
 
-    logger.info("Calling Gemini model for expense extraction")
-    response = model.generate_content(
-        prompt_parts,
-        generation_config=genai.GenerationConfig(max_output_tokens=_MAX_OUTPUT_TOKENS),
-    )
-    raw_text = (getattr(response, "text", "") or "").strip()
-
-    if not raw_text:
-        raise RuntimeError("Gemini returned an empty response")
-
-    parsed = _parse_json_from_model(raw_text)
+    parsed = _generate_and_parse_json_with_retries(model, prompt_parts)
     normalized = _normalize_payload(parsed, text_input=text_input)
 
-    logger.info("Expense extraction completed successfully")
-    return normalized
+    logger.info(
+        "Expense extraction completed successfully using model '%s'",
+        model_name,
+    )
+    return normalized, model_name
 
 
-def _get_model() -> genai.GenerativeModel:
+def _resolve_model_name(requested_model: str | None) -> str:
+    model_name = (requested_model or settings.GEMINI_MODEL or "").strip()
+    if not model_name:
+        raise RuntimeError("GEMINI_MODEL is not configured")
+
+    if model_name not in _SUPPORTED_GEMINI_MODELS:
+        raise ValueError(
+            "Unsupported llm_model. Allowed values: "
+            + ", ".join(_SUPPORTED_GEMINI_MODELS)
+        )
+
+    return model_name
+
+
+def _get_model(model_name: str) -> genai.GenerativeModel:
     """Lazily initialize Gemini model with configured credentials."""
-    global _gemini_model
-
-    if _gemini_model is not None:
-        return _gemini_model
+    cached = _gemini_models.get(model_name)
+    if cached is not None:
+        return cached
 
     if not settings.GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    _gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL)
-    return _gemini_model
+    instance = genai.GenerativeModel(model_name)
+    _gemini_models[model_name] = instance
+    return instance
+
+
+def _generate_and_parse_json_with_retries(
+    model: genai.GenerativeModel,
+    prompt_parts: list[Any],
+) -> dict[str, Any]:
+    """Generate JSON output and retry model-based repair up to max retries."""
+    logger.info("Calling Gemini model for expense extraction")
+    raw_text = _generate_model_text(model, prompt_parts)
+
+    try:
+        return _parse_json_from_model(raw_text)
+    except (json.JSONDecodeError, RuntimeError) as first_error:
+        logger.warning(
+            "Initial model output was not valid JSON: %s",
+            first_error,
+        )
+
+    latest_output = raw_text
+    for retry_index in range(1, _MAX_JSON_RETRIES + 1):
+        logger.info(
+            "Retrying JSON extraction with model-based repair (%s/%s)",
+            retry_index,
+            _MAX_JSON_RETRIES,
+        )
+        latest_output = _generate_model_text(
+            model,
+            [
+                _JSON_REPAIR_TEMPLATE.replace(
+                    "__BAD_OUTPUT__",
+                    latest_output,
+                )
+            ],
+        )
+
+        try:
+            return _parse_json_from_model(latest_output)
+        except (json.JSONDecodeError, RuntimeError) as retry_error:
+            logger.warning(
+                "JSON compatibility retry %s/%s failed: %s",
+                retry_index,
+                _MAX_JSON_RETRIES,
+                retry_error,
+            )
+
+    raise RuntimeError("Could not obtain valid JSON from Gemini after 2 retries")
+
+
+def _generate_model_text(
+    model: genai.GenerativeModel,
+    parts: list[Any],
+) -> str:
+    """Generate raw text from Gemini."""
+    response = model.generate_content(parts)
+
+    if response.candidates and response.candidates[0].finish_reason == 2:
+        raise ValueError(
+            "Gemini response was blocked/filtered. "
+            "Try a clearer image or provide text_input instead."
+        )
+
+    raw_text = (getattr(response, "text", "") or "").strip()
+    if not raw_text:
+        finish_reason = (
+            response.candidates[0].finish_reason if response.candidates else "N/A"
+        )
+        raise RuntimeError(
+            "Gemini returned an empty response. " f"finish_reason: {finish_reason}"
+        )
+    return raw_text
+
+
+def _load_image(image_bytes: bytes) -> Image.Image:
+    """Load raw uploaded image bytes into a PIL image without preprocessing."""
+    try:
+        image = Image.open(BytesIO(image_bytes))
+        image.load()
+        return image
+    except UnidentifiedImageError as exc:
+        raise ValueError("Uploaded file is not a valid image") from exc
 
 
 def _parse_json_from_model(raw_text: str) -> dict[str, Any]:
@@ -133,6 +246,7 @@ def _parse_json_from_model(raw_text: str) -> dict[str, Any]:
 
     match = _JSON_OBJECT_PATTERN.search(cleaned)
     if not match:
+        logger.warning(f"No JSON object found in model output: {raw_text}")
         raise RuntimeError("Could not find a JSON object in model output")
 
     return json.loads(match.group(0))
