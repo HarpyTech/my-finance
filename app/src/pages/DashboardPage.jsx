@@ -23,6 +23,16 @@ const LLM_OPTIONS = [
   'gemini-3.1-pro-preview',
 ];
 
+const inrCurrencyFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+});
+
+function formatInr(value) {
+  return inrCurrencyFormatter.format(Number(value || 0));
+}
+
 export default function DashboardPage() {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
@@ -156,7 +166,7 @@ export default function DashboardPage() {
       <section className="stats-grid">
         <article className="stat-card">
           <h3>Total Expenses</h3>
-          <p>${totalSpend.toFixed(2)}</p>
+          <p>{formatInr(totalSpend)}</p>
         </article>
         <article className="stat-card">
           <h3>Entries</h3>
@@ -249,8 +259,8 @@ export default function DashboardPage() {
               <BarChart data={monthly}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
+                <YAxis tickFormatter={formatInr} />
+                <Tooltip formatter={(value) => formatInr(value)} />
                 <Bar dataKey="total" fill="#0057ff" />
               </BarChart>
             </ResponsiveContainer>
@@ -264,8 +274,8 @@ export default function DashboardPage() {
               <BarChart data={yearly}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="year" />
-                <YAxis />
-                <Tooltip />
+                <YAxis tickFormatter={formatInr} />
+                <Tooltip formatter={(value) => formatInr(value)} />
                 <Legend />
                 <Bar dataKey="total" fill="#00a37a" />
               </BarChart>
@@ -279,7 +289,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie data={categoryData} dataKey="total" nameKey="category" outerRadius={90} fill="#ff7a00" />
-                <Tooltip />
+                <Tooltip formatter={(value) => formatInr(value)} />
               </PieChart>
             </ResponsiveContainer>
           </div>

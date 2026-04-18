@@ -176,7 +176,7 @@ export default function App() {
                   <textarea 
                     className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all resize-none"
                     rows="3"
-                    placeholder="E.g., I want to save $10,000 for a house down payment in the next 18 months..."
+                    placeholder="E.g., I want to save INR 10,000 for a house down payment in the next 18 months..."
                     value={goal}
                     onChange={(e) => setGoal(e.target.value)}
                   />

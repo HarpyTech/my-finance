@@ -4,6 +4,16 @@ import { useAuth } from '../auth/AuthContext';
 import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
+const inrCurrencyFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+});
+
+function formatInr(value) {
+  return inrCurrencyFormatter.format(Number(value || 0));
+}
+
 export default function ReportPage() {
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -183,7 +193,7 @@ export default function ReportPage() {
         <div className="report-summary">
           <span>{filteredExpenses.length} expenses</span>
           <span>{filteredLineItems.length} line items</span>
-          <span>${filteredSpend.toFixed(2)} filtered spend</span>
+          <span>{formatInr(filteredSpend)} filtered spend</span>
         </div>
 
         {error ? <p className="error-text">{error}</p> : null}
@@ -216,7 +226,7 @@ export default function ReportPage() {
                       <td>{item.vendor || '-'}</td>
                       <td>{item.description || '-'}</td>
                       <td>{item.line_items?.length || 0}</td>
-                      <td>${Number(item.amount).toFixed(2)}</td>
+                      <td>{formatInr(item.amount)}</td>
                     </tr>
                   ))
                 ) : (
@@ -254,8 +264,8 @@ export default function ReportPage() {
                       <td>{toTitleCase(item.inputType)}</td>
                       <td>{item.itemName || '-'}</td>
                       <td>{item.quantity}</td>
-                      <td>${item.unitPrice.toFixed(2)}</td>
-                      <td>${item.total.toFixed(2)}</td>
+                      <td>{formatInr(item.unitPrice)}</td>
+                      <td>{formatInr(item.total)}</td>
                     </tr>
                   ))
                 ) : (
