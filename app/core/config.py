@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
     BUILD_VERSION: str = "dev"
 
+    SIGNUP_OTP_EXPIRY_MINUTES: int = 2
+    SIGNUP_OTP_LENGTH: int = 6
+
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM_EMAIL: str = "no-reply@my-finance.local"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: Any) -> Any:

@@ -6,6 +6,11 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8)
 
 
+class UserVerifySignup(BaseModel):
+    username: EmailStr
+    otp: str = Field(min_length=4, max_length=8)
+
+
 class UserLogin(BaseModel):
     username: EmailStr
     password: str
@@ -18,6 +23,7 @@ class UserPublic(BaseModel):
 
 class UserInDB(UserPublic):
     password_hash: str
+    email_verified: bool = False
 
 
 class UserProfile(BaseModel):

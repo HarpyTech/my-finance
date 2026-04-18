@@ -55,10 +55,17 @@ export function AuthProvider({ children }) {
     await refreshSession();
   };
 
-  const register = async (username, password) => {
+  const requestSignupOtp = async (username, password) => {
     await apiRequest('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+    });
+  };
+
+  const verifySignupOtp = async (username, otp) => {
+    await apiRequest('/auth/register/verify', {
+      method: 'POST',
+      body: JSON.stringify({ username, otp }),
     });
   };
 
@@ -83,7 +90,8 @@ export function AuthProvider({ children }) {
       profile,
       loading,
       login,
-      register,
+      requestSignupOtp,
+      verifySignupOtp,
       logout,
       refreshSession,
       refreshProfile,

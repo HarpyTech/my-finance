@@ -2,8 +2,12 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 import logging
 
 from app.core.security import create_access_token
-from app.services.auth_service import authenticate_user, register_user
-from app.models.user import UserCreate, UserLogin
+from app.services.auth_service import (
+    authenticate_user,
+    register_user,
+    verify_user_signup_otp,
+)
+from app.models.user import UserCreate, UserLogin, UserVerifySignup
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,8 +29,8 @@ def _set_session_cookie(response: Response, token: str) -> None:
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def api_register(payload: UserCreate):
-    """Register a new user"""
-    logger.info("Registration request received")
+    """Start registration by generating OTP and sending it to email"""
+    logger.info("Registration OTP request received")
     try:
         user = register_user(payload.username, payload.password)
     except RuntimeError as exc:
@@ -37,16 +41,53 @@ def api_register(payload: UserCreate):
         ) from exc
 
     if not user:
-        logger.warning("Registration failed: User already exists")
+        logger.warning("Registration failed: User already exists and verified")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already exists",
         )
 
-    logger.info("User registered successfully")
+    logger.info("Registration OTP sent successfully")
     return {
-        "message": "User registered successfully",
+        "message": "OTP sent to your email. Verify to complete registration.",
         "user": user,
+    }
+
+
+@router.post("/register/verify", status_code=status.HTTP_200_OK)
+def api_verify_register(payload: UserVerifySignup):
+    """Verify OTP and activate user account"""
+    logger.info("Registration OTP verification request received")
+    try:
+        result = verify_user_signup_otp(payload.username, payload.otp)
+    except RuntimeError as exc:
+        logger.error(f"Service unavailable during OTP verification: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if result.get("error") == "OTP expired":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP expired. Please register again to receive a new OTP.",
+        )
+
+    if result.get("error") == "Invalid OTP":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP",
+        )
+
+    return {
+        "message": "Email verified successfully. You can now log in.",
+        "user": result,
     }
 
 
@@ -96,6 +137,13 @@ async def api_login(request: Request, response: Response):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
+        )
+
+    if user.get("requires_verification"):
+        logger.warning("Login failed: User email not verified")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please verify your email using OTP.",
         )
 
     token = create_access_token({"username": user["username"], "role": user["role"]})
