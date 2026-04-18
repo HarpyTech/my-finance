@@ -282,7 +282,6 @@ def _normalize_payload(
     )
 
     expense_date = _normalize_date(raw.get("expense_date") or raw.get("date"))
-    tax_details = _normalize_tax_details(raw)
 
     payload = {
         "amount": round(amount, 2),
@@ -292,7 +291,6 @@ def _normalize_payload(
         "vendor": vendor,
         "description": description,
         "expense_date": expense_date.isoformat(),
-        "tax_details": tax_details,
         "line_items": line_items,
     }
 
@@ -382,44 +380,6 @@ def _to_float(value: Any) -> float | None:
         return float(text)
     except ValueError:
         return None
-
-
-def _normalize_tax_details(raw: dict[str, Any]) -> dict[str, float]:
-    tax_raw = raw.get("tax_details") if isinstance(raw.get("tax_details"), dict) else {}
-
-    normalized = {
-        "subtotal": _to_float(tax_raw.get("subtotal") or raw.get("subtotal")) or 0.0,
-        "tax": _to_float(tax_raw.get("tax") or raw.get("tax")) or 0.0,
-        "cgst": _to_float(tax_raw.get("cgst") or raw.get("cgst")) or 0.0,
-        "sgst": _to_float(tax_raw.get("sgst") or raw.get("sgst")) or 0.0,
-        "igst": _to_float(tax_raw.get("igst") or raw.get("igst")) or 0.0,
-        "vat": _to_float(tax_raw.get("vat") or raw.get("vat")) or 0.0,
-        "service_tax": _to_float(
-            tax_raw.get("service_tax")
-            or raw.get("service_tax")
-            or raw.get("serviceCharge")
-        )
-        or 0.0,
-        "cess": _to_float(tax_raw.get("cess") or raw.get("cess")) or 0.0,
-        "tip": _to_float(tax_raw.get("tip") or raw.get("tip")) or 0.0,
-        "discount": _to_float(tax_raw.get("discount") or raw.get("discount")) or 0.0,
-        "total_tax": _to_float(tax_raw.get("total_tax") or raw.get("total_tax")) or 0.0,
-    }
-
-    if normalized["total_tax"] <= 0:
-        normalized["total_tax"] = (
-            normalized["cgst"]
-            + normalized["sgst"]
-            + normalized["igst"]
-            + normalized["vat"]
-            + normalized["service_tax"]
-            + normalized["cess"]
-        )
-
-    if normalized["tax"] <= 0 and normalized["total_tax"] > 0:
-        normalized["tax"] = normalized["total_tax"]
-
-    return {key: round(max(0.0, value), 2) for key, value in normalized.items()}
 
 
 def _normalize_invoice_number(
