@@ -31,33 +31,29 @@ _gemini_models: dict[str, genai.GenerativeModel] = {}
 
 
 PROMPT_TEMPLATE = """
-                Help me organize this purchase info. I need it in JSON format so I can track my spending.
+                Help me organize this purchase info.
+                I need it in JSON format so I can track my spending.
 
                 Here's the structure I need:
                 {
-                    "amount": the total amount paid,
+                    "amount": the total amount paid only,
                     "category": what type of purchase,
                     "bill_type": one of: grocery, restaurant, service, utility, or other,
                     "invoice_number": any receipt or transaction number,
                     "vendor": the store or business name,
-                    "description": what was purchased,
+                    "description": what was purchased short description,
                     "expense_date": the date in YYYY-MM-DD format,
-                    "tax_details": {
-                        "subtotal": 0,
-                        "tax": 0,
-                        "cgst": 0,
-                        "sgst": 0,
-                        "igst": 0,
-                        "vat": 0,
-                        "service_tax": 0,
-                        "cess": 0,
-                        "tip": 0,
-                        "discount": 0,
-                        "total_tax": 0
-                    },
-                    "line_items": [List of sub expenses / items along with their individual price]
+                    "line_items": [
+                        {
+                            "name": item name,
+                            "quantity": item quantity,
+                            "unit_price": item price,
+                            "total": item total
+                        }
+                    ]
                 }
 
+                Do not include tax fields.
                 Just give me back the JSON. If you're not sure about a value, use 0 for numbers or empty string for text.
 """.strip()
 
@@ -72,20 +68,14 @@ _JSON_REPAIR_TEMPLATE = """
   "vendor": string,
   "description": string,
   "expense_date": "YYYY-MM-DD",
-  "tax_details": {
-    "subtotal": number,
-    "tax": number,
-    "cgst": number,
-    "sgst": number,
-    "igst": number,
-    "vat": number,
-    "service_tax": number,
-    "cess": number,
-    "tip": number,
-    "discount": number,
-    "total_tax": number
-  },
-  "line_items": []
+    "line_items": [
+        {
+            "name": string,
+            "quantity": number,
+            "unit_price": number,
+            "total": number
+        }
+    ]
 }
 
     Just the JSON, please.
