@@ -5,6 +5,23 @@ import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
 const CATEGORIES = ['Food', 'Travel', 'Utilities', 'Shopping', 'Health', 'Other'];
+const SUPPORT_EMAIL = 'support@harpytechco.in';
+const SUPPORT_SUBJECT = 'Request to increase expense limit';
+const SUPPORT_BODY_TEMPLATE = [
+  'Hi Customer Support Team,',
+  '',
+  'I have reached the 10 expense limit on my account and request a limit increase.',
+  '',
+  'Account email: ',
+  'Requested new limit: ',
+  'Reason: ',
+  '',
+  'Thank you,',
+].join('\n');
+const SUPPORT_MAILTO_LINK =
+  `mailto:${SUPPORT_EMAIL}` +
+  `?subject=${encodeURIComponent(SUPPORT_SUBJECT)}` +
+  `&body=${encodeURIComponent(SUPPORT_BODY_TEMPLATE)}`;
 
 export default function AddExpensePage() {
   const { logout } = useAuth();
@@ -157,7 +174,7 @@ export default function AddExpensePage() {
         <div className="session-limit-banner" role="alert">
           <strong>Expense limit reached.</strong> You have added the maximum of{' '}
           10 expenses allowed on your plan.{' '}
-          <a href="mailto:support@harpytechco.in">Contact our customer team</a> to
+          <a href={SUPPORT_MAILTO_LINK}>Contact our customer team</a> to
           upgrade your plan or get help.
         </div>
       )}
