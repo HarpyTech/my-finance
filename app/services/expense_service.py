@@ -36,7 +36,6 @@ def add_expense(
     description: str,
     expense_date: date,
     llm_model: str | None = None,
-    tax_details: dict | None = None,
     line_items: list[dict] | None = None,
 ):
     """Add a new expense for a user"""
@@ -48,7 +47,6 @@ def add_expense(
         expenses = get_expenses_collection()
         expense_line_items = get_expense_line_items_collection()
 
-        normalized_tax = _normalize_tax_details(tax_details)
         normalized_items = line_items or []
         normalized_invoice_number = _normalize_invoice_number(
             invoice_number,
@@ -67,7 +65,6 @@ def add_expense(
             "description": description.strip(),
             "expense_date": _as_mongo_datetime(expense_date),
             "llm_model": normalized_llm_model,
-            "tax_details": normalized_tax,
             "line_items_count": len(normalized_items),
             "created_at": datetime.now(timezone.utc),
         }
@@ -103,7 +100,6 @@ def add_expense(
             "description": doc["description"],
             "expense_date": expense_date.isoformat(),
             "llm_model": doc["llm_model"],
-            "tax_details": doc["tax_details"],
             "line_items": normalized_items,
         }
     except PyMongoError as exc:
@@ -177,7 +173,6 @@ def list_expenses(username: str):
                 "description": doc.get("description", ""),
                 "expense_date": doc["expense_date"].isoformat(),
                 "llm_model": doc.get("llm_model"),
-                "tax_details": _normalize_tax_details(doc.get("tax_details")),
                 "line_items": line_items_map.get(str(doc["_id"]), []),
             }
             for doc in docs
@@ -298,41 +293,6 @@ def _get_user_rate_limit_config(username: str) -> tuple[bool, int]:
     return disable_rate_limit, expense_limit
 
 
-def _normalize_tax_details(raw_tax_details: dict | None) -> dict:
-    """Ensure all tax attributes are stored as explicit numeric fields."""
-    raw = raw_tax_details or {}
-    normalized = {
-        "subtotal": _float_or_zero(raw.get("subtotal")),
-        "tax": _float_or_zero(raw.get("tax")),
-        "cgst": _float_or_zero(raw.get("cgst")),
-        "sgst": _float_or_zero(raw.get("sgst")),
-        "igst": _float_or_zero(raw.get("igst")),
-        "vat": _float_or_zero(raw.get("vat")),
-        "service_tax": _float_or_zero(raw.get("service_tax")),
-        "cess": _float_or_zero(raw.get("cess")),
-        "tip": _float_or_zero(raw.get("tip")),
-        "discount": _float_or_zero(raw.get("discount")),
-        "total_tax": _float_or_zero(raw.get("total_tax")),
-    }
-
-    computed_total_tax = (
-        normalized["cgst"]
-        + normalized["sgst"]
-        + normalized["igst"]
-        + normalized["vat"]
-        + normalized["service_tax"]
-        + normalized["cess"]
-    )
-
-    if normalized["total_tax"] <= 0 and computed_total_tax > 0:
-        normalized["total_tax"] = round(computed_total_tax, 2)
-
-    if normalized["tax"] <= 0 and normalized["total_tax"] > 0:
-        normalized["tax"] = normalized["total_tax"]
-
-    return {key: round(value, 2) for key, value in normalized.items()}
-
-
 def _normalize_invoice_number(
     raw_invoice_number: str | None,
     description: str | None,
@@ -373,13 +333,6 @@ def _extract_invoice_number_from_text(text: str) -> str:
             return candidate
 
     return ""
-
-
-def _float_or_zero(value) -> float:
-    try:
-        return max(0.0, float(value or 0))
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def monthly_summary(username: str, year: int):

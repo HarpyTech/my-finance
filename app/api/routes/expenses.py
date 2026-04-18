@@ -49,7 +49,6 @@ def create_expense(
             vendor=payload.vendor,
             description=payload.description,
             expense_date=payload.expense_date,
-            tax_details=payload.tax_details.model_dump(),
             line_items=[item.model_dump() for item in payload.line_items],
         )
         logger.info("Expense created successfully")
@@ -112,7 +111,6 @@ async def extract_and_create_expense(
             description=extracted["description"],
             expense_date=date.fromisoformat(extracted["expense_date"]),
             llm_model=used_llm_model,
-            tax_details=extracted["tax_details"],
             line_items=extracted["line_items"],
         )
 
