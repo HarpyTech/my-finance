@@ -10,6 +10,14 @@ from app.db.mongo import (
 
 logger = logging.getLogger(__name__)
 
+SESSION_EXPENSE_LIMIT = 10
+
+
+class SessionExpenseLimitError(Exception):
+    """Raised when a user exceeds their per-session expense limit."""
+
+    pass
+
 
 def _as_mongo_datetime(value: date) -> datetime:
     """Convert a date to a MongoDB-storable datetime at start of day."""
@@ -60,6 +68,7 @@ def add_expense(
             "llm_model": normalized_llm_model,
             "tax_details": normalized_tax,
             "line_items_count": len(normalized_items),
+            "created_at": datetime.now(timezone.utc),
         }
         result = expenses.insert_one(doc)
 
@@ -189,6 +198,37 @@ def list_expenses(username: str):
             exc_info=True,
         )
         raise
+
+
+def check_session_expense_limit(username: str) -> None:
+    """Raise SessionExpenseLimitError if the overall expense limit is hit."""
+    try:
+        expenses = get_expenses_collection()
+        count = expenses.count_documents({"username": username})
+
+        if count >= SESSION_EXPENSE_LIMIT:
+            logger.warning(
+                "Expense limit reached for user %s: %d/%d",
+                username,
+                count,
+                SESSION_EXPENSE_LIMIT,
+            )
+            raise SessionExpenseLimitError(
+                f"You have reached the maximum of "
+                f"{SESSION_EXPENSE_LIMIT} expenses. "
+                "Please contact our customer team to continue."
+            )
+    except SessionExpenseLimitError:
+        raise
+    except PyMongoError as exc:
+        logger.error(
+            "Database error while checking session expense limit: %s",
+            str(exc),
+            exc_info=True,
+        )
+        raise RuntimeError(
+            "Failed to check expense limit due to database error"
+        ) from exc
 
 
 def _normalize_tax_details(raw_tax_details: dict | None) -> dict:

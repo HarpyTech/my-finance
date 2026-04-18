@@ -17,9 +17,11 @@ from app.models.expense import ExpenseCreate, ExpenseInputType
 from app.services.expense_service import (
     add_expense,
     category_summary,
+    check_session_expense_limit,
     list_expenses,
     monthly_summary,
     yearly_summary,
+    SessionExpenseLimitError,
 )
 from app.services.expense_extraction_service import extract_expense_payload
 
@@ -35,6 +37,7 @@ def create_expense(
     """Create a new expense"""
     logger.info("Create expense request received")
     try:
+        check_session_expense_limit(user)
         result = add_expense(
             username=user,
             amount=payload.amount,
@@ -50,6 +53,12 @@ def create_expense(
         )
         logger.info("Expense created successfully")
         return result
+    except SessionExpenseLimitError as exc:
+        logger.warning(f"Session expense limit reached for user {user}: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
     except RuntimeError as exc:
         logger.error(f"Service error creating expense: {str(exc)}")
         raise HTTPException(
@@ -74,6 +83,8 @@ async def extract_and_create_expense(
     """Extract expense details with Gemini and insert into DB."""
     logger.info("Extract-and-create expense request received")
     try:
+        # Enforce limit before reading image bytes or calling Gemini.
+        check_session_expense_limit(user)
         raw_image_bytes: bytes | None = None
         if image is not None:
             # Keep upload untouched: read and forward original bytes as-is.
@@ -114,6 +125,12 @@ async def extract_and_create_expense(
         logger.warning(f"Invalid extract-and-create request: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except SessionExpenseLimitError as exc:
+        logger.warning(f"Session expense limit reached for user {user}: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         ) from exc
     except RuntimeError as exc:

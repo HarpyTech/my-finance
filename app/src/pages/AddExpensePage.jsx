@@ -24,6 +24,7 @@ export default function AddExpensePage() {
   const [lastExtracted, setLastExtracted] = useState(null);
   const [lastUsedLlmModel, setLastUsedLlmModel] = useState('');
   const [error, setError] = useState('');
+  const [sessionLimitReached, setSessionLimitReached] = useState(false);
 
   async function handleLogout() {
     await logout();
@@ -52,7 +53,11 @@ export default function AddExpensePage() {
         description: '',
       }));
     } catch (err) {
-      setError(err.message);
+      if (err.status === 429) {
+        setSessionLimitReached(true);
+      } else {
+        setError(err.message);
+      }
     }
   }
 
@@ -94,7 +99,11 @@ export default function AddExpensePage() {
       setAiImageFile(null);
       setCameraImageFile(null);
     } catch (err) {
-      setError(err.message);
+      if (err.status === 429) {
+        setSessionLimitReached(true);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setExtracting(false);
     }
@@ -128,6 +137,15 @@ export default function AddExpensePage() {
           <button onClick={handleLogout}>Logout</button>
         </div>
       </header>
+
+      {sessionLimitReached && (
+        <div className="session-limit-banner" role="alert">
+          <strong>Expense limit reached.</strong> You have added the maximum of{' '}
+          10 expenses allowed on your plan.{' '}
+          <a href="mailto:support@myfinance.app">Contact our customer team</a> to
+          upgrade your plan or get help.
+        </div>
+      )}
 
       <section className="panel-grid">
         <article className="panel">
@@ -174,7 +192,7 @@ export default function AddExpensePage() {
                 onChange={(e) => setExpenseForm((prev) => ({ ...prev, description: e.target.value }))}
               />
             </label>
-            <button type="submit">Save Expense</button>
+            <button type="submit" disabled={sessionLimitReached}>Save Expense</button>
           </form>
         </article>
 
@@ -221,7 +239,7 @@ export default function AddExpensePage() {
                 ? 'On mobile you can either upload an image or open the camera directly.'
                 : 'Upload a receipt image or paste text for AI extraction.'}
             </p>
-            <button type="submit" disabled={extracting}>
+            <button type="submit" disabled={extracting || sessionLimitReached}>
               {extracting ? 'Extracting...' : 'Extract + Save Expense'}
             </button>
           </form>

@@ -166,6 +166,12 @@ def authenticate_user(username: str, password: str):
             logger.warning("Authentication failed: Email not verified")
             return {"requires_verification": True}
 
+        # Record the login timestamp to enable per-session rate limiting.
+        users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"last_login_at": _utcnow()}},
+        )
+
         logger.info("User authenticated successfully")
         return {
             "username": user["username"],
