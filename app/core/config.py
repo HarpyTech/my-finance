@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str | None = None
     SMTP_PASSWORD: str | None = None
     SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: int = 15
     SMTP_FROM_EMAIL: str = "no-reply@my-finance.local"
 
     @field_validator("CORS_ORIGINS", mode="before")

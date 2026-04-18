@@ -209,6 +209,7 @@ def test_email_delivery(to_email: str):
     Returns success/failure status and helpful debug info.
     """
     from app.core.config import settings
+    import socket
     import smtplib
     from email.message import EmailMessage
 
@@ -239,23 +240,27 @@ def test_email_delivery(to_email: str):
         message["To"] = to_email
         message.set_content(body)
 
-        with smtplib.SMTP(
+        smtp_client = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
+
+        with smtp_client(
             settings.SMTP_HOST,
             settings.SMTP_PORT,
-            timeout=15,
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
         ) as server:
-            server.ehlo()
-            if settings.SMTP_USE_TLS:
-                if not server.has_extn("STARTTLS"):
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail=(
-                            "SMTP server does not support STARTTLS. "
-                            "Disable SMTP_USE_TLS or use a TLS-capable server."
-                        ),
-                    )
-                server.starttls()
+            if not settings.SMTP_USE_SSL:
                 server.ehlo()
+                if settings.SMTP_USE_TLS:
+                    if not server.has_extn("STARTTLS"):
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=(
+                                "SMTP server does not support STARTTLS. "
+                                "Disable SMTP_USE_TLS "
+                                "or use a TLS-capable server."
+                            ),
+                        )
+                    server.starttls()
+                    server.ehlo()
             if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
                 server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
             server.send_message(message)
@@ -271,6 +276,23 @@ def test_email_delivery(to_email: str):
 
     except HTTPException:
         raise
+    except (
+        TimeoutError,
+        socket.timeout,
+        smtplib.SMTPServerDisconnected,
+    ) as exc:
+        logger.error(f"Failed to send test email: {str(exc)}", exc_info=True)
+        mode = "ssl" if settings.SMTP_USE_SSL else "plain/starttls"
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "SMTP connection timed out or was closed by server. "
+                f"host={settings.SMTP_HOST} "
+                f"port={settings.SMTP_PORT} "
+                f"mode={mode}. "
+                "Verify SMTP_HOST/SMTP_PORT and TLS/SSL settings."
+            ),
+        ) from exc
     except Exception as exc:
         logger.error(f"Failed to send test email: {str(exc)}", exc_info=True)
         raise HTTPException(
