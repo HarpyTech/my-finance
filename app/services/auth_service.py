@@ -2,6 +2,7 @@ from pymongo.errors import PyMongoError
 import logging
 import random
 from datetime import datetime, timedelta, timezone
+import socket
 import smtplib
 from email.message import EmailMessage
 
@@ -58,17 +59,48 @@ def _deliver_signup_otp(email: str, otp: str) -> None:
     message.set_content(body)
 
     try:
-        with smtplib.SMTP(
+        smtp_client = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
+
+        with smtp_client(
             settings.SMTP_HOST,
             settings.SMTP_PORT,
-            timeout=15,
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
         ) as server:
-            if settings.SMTP_USE_TLS:
-                server.starttls()
+            if not settings.SMTP_USE_SSL:
+                server.ehlo()
+                if settings.SMTP_USE_TLS:
+                    if not server.has_extn("STARTTLS"):
+                        raise RuntimeError(
+                            "SMTP server does not support STARTTLS. "
+                            "Disable SMTP_USE_TLS or use a TLS-capable server."
+                        )
+                    server.starttls()
+                    server.ehlo()
+
             if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
                 server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
             server.send_message(message)
+
         logger.info("Verification OTP email sent to %s", email)
+    except (
+        TimeoutError,
+        socket.timeout,
+        smtplib.SMTPServerDisconnected,
+    ) as exc:
+        logger.error(
+            ("Failed to send OTP email to %s " "due to SMTP timeout/disconnect: %s"),
+            email,
+            str(exc),
+            exc_info=True,
+        )
+        mode = "ssl" if settings.SMTP_USE_SSL else "plain/starttls"
+        raise RuntimeError(
+            "SMTP connection timed out or was closed by server. "
+            f"host={settings.SMTP_HOST} "
+            f"port={settings.SMTP_PORT} "
+            f"mode={mode}."
+        ) from exc
     except Exception as exc:
         logger.error(
             "Failed to send OTP email to %s: %s",
