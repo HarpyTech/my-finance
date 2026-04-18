@@ -18,6 +18,7 @@ from app.services.expense_service import (
     add_expense,
     category_summary,
     check_session_expense_limit,
+    get_expense_limit_status,
     list_expenses,
     monthly_summary,
     yearly_summary,
@@ -178,6 +179,37 @@ def get_expenses(user: str = Depends(get_current_user)):
     except Exception as exc:
         logger.error(
             f"Unexpected error fetching expenses: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+@router.get("/limit-status")
+def get_expense_limit_status_route(user: str = Depends(get_current_user)):
+    """Get expense-limit status for the current user."""
+    logger.info("Expense limit status request received")
+    try:
+        result = get_expense_limit_status(user)
+        logger.info(
+            "Expense limit status retrieved for user %s: %d/%d",
+            user,
+            result["count"],
+            result["limit"],
+        )
+        return result
+    except RuntimeError as exc:
+        logger.error(
+            "Service error fetching expense limit status: %s",
+            str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Unexpected error fetching expense limit status: %s",
+            str(exc),
             exc_info=True,
         )
         raise

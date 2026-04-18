@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import TopNavigation from '../components/TopNavigation';
@@ -26,6 +26,19 @@ export default function AddExpensePage() {
   const [error, setError] = useState('');
   const [sessionLimitReached, setSessionLimitReached] = useState(false);
 
+  useEffect(() => {
+    syncExpenseLimitState();
+  }, []);
+
+  async function syncExpenseLimitState() {
+    try {
+      const response = await apiRequest('/expenses/limit-status');
+      setSessionLimitReached(Boolean(response.reached));
+    } catch {
+      // Keep this non-blocking: user can still try submit and backend enforces limit.
+    }
+  }
+
   async function handleLogout() {
     await logout();
     navigate('/login');
@@ -52,6 +65,7 @@ export default function AddExpensePage() {
         amount: '',
         description: '',
       }));
+      await syncExpenseLimitState();
     } catch (err) {
       if (err.status === 429) {
         setSessionLimitReached(true);
@@ -98,6 +112,7 @@ export default function AddExpensePage() {
       setAiInputText('');
       setAiImageFile(null);
       setCameraImageFile(null);
+      await syncExpenseLimitState();
     } catch (err) {
       if (err.status === 429) {
         setSessionLimitReached(true);
@@ -142,7 +157,7 @@ export default function AddExpensePage() {
         <div className="session-limit-banner" role="alert">
           <strong>Expense limit reached.</strong> You have added the maximum of{' '}
           10 expenses allowed on your plan.{' '}
-          <a href="mailto:support@myfinance.app">Contact our customer team</a> to
+          <a href="mailto:support@harpytechco.in">Contact our customer team</a> to
           upgrade your plan or get help.
         </div>
       )}

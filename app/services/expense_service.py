@@ -231,6 +231,30 @@ def check_session_expense_limit(username: str) -> None:
         ) from exc
 
 
+def get_expense_limit_status(username: str) -> dict:
+    """Return expense limit status for the given user."""
+    try:
+        expenses = get_expenses_collection()
+        count = expenses.count_documents({"username": username})
+        limit = SESSION_EXPENSE_LIMIT
+        remaining = max(limit - count, 0)
+        return {
+            "limit": limit,
+            "count": count,
+            "remaining": remaining,
+            "reached": count >= limit,
+        }
+    except PyMongoError as exc:
+        logger.error(
+            "Database error while fetching expense limit status: %s",
+            str(exc),
+            exc_info=True,
+        )
+        raise RuntimeError(
+            "Failed to fetch expense limit status due to database error"
+        ) from exc
+
+
 def _normalize_tax_details(raw_tax_details: dict | None) -> dict:
     """Ensure all tax attributes are stored as explicit numeric fields."""
     raw = raw_tax_details or {}
