@@ -56,6 +56,8 @@ def _deliver_signup_otp(email: str, otp: str) -> None:
     message["Subject"] = subject
     message["From"] = settings.SMTP_FROM_EMAIL
     message["To"] = email
+    if settings.SMTP_BCC_EMAILS:
+        message["Bcc"] = ", ".join(settings.SMTP_BCC_EMAILS)
     message.set_content(body)
 
     try:

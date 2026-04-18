@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     SMTP_USE_SSL: bool = False
     SMTP_TIMEOUT_SECONDS: int = 15
     SMTP_FROM_EMAIL: str = "no-reply@my-finance.local"
+    SMTP_BCC_EMAILS: list[str] = ["no-reply@harpytechco.in"]
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -70,6 +71,33 @@ class Settings(BaseSettings):
             ]
 
         return [origin.strip() for origin in normalized.split(",") if origin.strip()]
+
+    @field_validator("SMTP_BCC_EMAILS", mode="before")
+    @classmethod
+    def parse_smtp_bcc_emails(cls, value: Any) -> Any:
+        if value is None:
+            return []
+
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip()
+        if not normalized:
+            return []
+
+        if normalized.startswith("["):
+            parsed = json.loads(normalized)
+            if not isinstance(parsed, list):
+                raise ValueError(
+                    "SMTP_BCC_EMAILS JSON value must be " "a list of email addresses"
+                )
+            return [
+                email.strip()
+                for email in parsed
+                if isinstance(email, str) and email.strip()
+            ]
+
+        return [email.strip() for email in normalized.split(",") if email.strip()]
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

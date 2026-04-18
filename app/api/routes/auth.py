@@ -281,6 +281,8 @@ def test_email_delivery(to_email: str):
         message["Subject"] = subject
         message["From"] = settings.SMTP_FROM_EMAIL
         message["To"] = to_email
+        if settings.SMTP_BCC_EMAILS:
+            message["Bcc"] = ", ".join(settings.SMTP_BCC_EMAILS)
         message.set_content(body)
 
         smtp_client = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
