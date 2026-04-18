@@ -17,6 +17,11 @@ export default function LoginPage() {
       await login(form.username, form.password);
       navigate('/dashboard');
     } catch (err) {
+      if ((err.message || '').toLowerCase().includes('email not verified')) {
+        const encodedEmail = encodeURIComponent(form.username);
+        navigate(`/verify-email?email=${encodedEmail}`);
+        return;
+      }
       setError(err.message);
     } finally {
       setSubmitting(false);
@@ -54,6 +59,9 @@ export default function LoginPage() {
         </form>
         <p>
           New user? <Link to="/register">Create an account</Link>
+        </p>
+        <p>
+          Already registered but not verified? <Link to="/verify-email">Verify now</Link>
         </p>
       </section>
     </main>

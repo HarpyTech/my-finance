@@ -226,9 +226,9 @@ def register_user(username: str, password: str, role: str = "user"):
             "role": role,
             "verification_required": True,
         }
-    except OtpRateLimitError as exc:
+    except OtpRateLimitError:
         logger.warning(f"OTP rate limit exceeded for {username}")
-        raise RuntimeError(f"{str(exc)}") from exc
+        raise
     except PyMongoError as exc:
         logger.error(
             f"Database error during registration: {str(exc)}",
@@ -238,6 +238,60 @@ def register_user(username: str, password: str, role: str = "user"):
     except Exception as exc:
         logger.error(
             f"Unexpected error during registration: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+def resend_signup_otp(username: str):
+    """Resend OTP for users who registered but are still unverified."""
+    logger.info("Signup OTP resend request initiated")
+    try:
+        check_and_record_otp_request(username)
+        users = get_users_collection()
+        user = users.find_one({"username": username})
+        if not user:
+            logger.warning("OTP resend failed: User not found")
+            return None
+
+        if user.get("email_verified", False):
+            logger.warning("OTP resend failed: User already verified")
+            return {"error": "already_verified"}
+
+        otp = _generate_signup_otp()
+        otp_expires_at = _utcnow() + timedelta(
+            minutes=settings.SIGNUP_OTP_EXPIRY_MINUTES
+        )
+
+        users.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "signup_otp_hash": hash_password(otp),
+                    "signup_otp_expires_at": otp_expires_at,
+                    "updated_at": _utcnow(),
+                }
+            },
+        )
+
+        _deliver_signup_otp(username, otp)
+        logger.info("OTP resend successful")
+        return {
+            "username": username,
+            "verification_required": True,
+        }
+    except OtpRateLimitError:
+        logger.warning(f"OTP resend rate limit exceeded for {username}")
+        raise
+    except PyMongoError as exc:
+        logger.error(
+            f"Database error during OTP resend: {str(exc)}",
+            exc_info=True,
+        )
+        raise RuntimeError("Failed to resend OTP due to database error") from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error during OTP resend: {str(exc)}",
             exc_info=True,
         )
         raise

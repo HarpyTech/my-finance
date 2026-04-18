@@ -119,6 +119,9 @@ export default function RegisterPage() {
         <p>
           Already registered? <Link to="/login">Sign in</Link>
         </p>
+        <p>
+          Need to verify later? <Link to="/verify-email">Verify account</Link>
+        </p>
       </section>
     </main>
   );

@@ -6,9 +6,15 @@ from app.core.ratelimit import OtpRateLimitError
 from app.services.auth_service import (
     authenticate_user,
     register_user,
+    resend_signup_otp,
     verify_user_signup_otp,
 )
-from app.models.user import UserCreate, UserLogin, UserVerifySignup
+from app.models.user import (
+    UserCreate,
+    UserLogin,
+    UserResendOtp,
+    UserVerifySignup,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -93,6 +99,43 @@ def api_verify_register(payload: UserVerifySignup):
 
     return {
         "message": "Email verified successfully. You can now log in.",
+        "user": result,
+    }
+
+
+@router.post("/register/resend-otp", status_code=status.HTTP_200_OK)
+def api_resend_register_otp(payload: UserResendOtp):
+    """Resend OTP for existing users that are not verified yet."""
+    logger.info("Registration OTP resend request received")
+    try:
+        result = resend_signup_otp(payload.username)
+    except OtpRateLimitError as exc:
+        logger.warning(f"Rate limit exceeded for OTP resend: {payload.username}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
+    except RuntimeError as exc:
+        logger.error(f"Service unavailable during OTP resend: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if result.get("error") == "already_verified":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already verified. Please log in.",
+        )
+
+    return {
+        "message": "A new OTP has been sent to your email.",
         "user": result,
     }
 

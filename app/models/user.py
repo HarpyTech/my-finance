@@ -11,6 +11,10 @@ class UserVerifySignup(BaseModel):
     otp: str = Field(min_length=4, max_length=8)
 
 
+class UserResendOtp(BaseModel):
+    username: EmailStr
+
+
 class UserLogin(BaseModel):
     username: EmailStr
     password: str

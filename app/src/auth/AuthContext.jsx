@@ -69,6 +69,13 @@ export function AuthProvider({ children }) {
     });
   };
 
+  const resendSignupOtp = async (username) => {
+    await apiRequest('/auth/register/resend-otp', {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    });
+  };
+
   const logout = async () => {
     await apiRequest('/auth/logout', { method: 'POST' });
     setSession({ authenticated: false, user: null, role: null });
@@ -92,6 +99,7 @@ export function AuthProvider({ children }) {
       login,
       requestSignupOtp,
       verifySignupOtp,
+      resendSignupOtp,
       logout,
       refreshSession,
       refreshProfile,
