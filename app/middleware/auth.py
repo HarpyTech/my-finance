@@ -15,6 +15,7 @@ PUBLIC_PATHS = {
     "/api/v1/auth/csrf",
     "/api/v1/health",
     "/api/v1/health/build",
+    "/api/v1/auth/test-email",
     "/health",
     "/",
     "/docs",

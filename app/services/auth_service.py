@@ -7,6 +7,11 @@ from email.message import EmailMessage
 
 from app.core.security import verify_password, hash_password
 from app.core.config import settings
+from app.core.ratelimit import (
+    check_and_record_otp_request,
+    clear_otp_attempts,
+    OtpRateLimitError,
+)
 from app.db.mongo import get_users_collection
 
 logger = logging.getLogger(__name__)
@@ -152,6 +157,7 @@ def register_user(username: str, password: str, role: str = "user"):
     """Create or refresh an unverified user and send signup OTP."""
     logger.info("User registration OTP request initiated")
     try:
+        check_and_record_otp_request(username)
         users = get_users_collection()
         existing_user = users.find_one({"username": username})
         if existing_user and existing_user.get("email_verified", False):
@@ -188,6 +194,9 @@ def register_user(username: str, password: str, role: str = "user"):
             "role": role,
             "verification_required": True,
         }
+    except OtpRateLimitError as exc:
+        logger.warning(f"OTP rate limit exceeded for {username}")
+        raise RuntimeError(f"{str(exc)}") from exc
     except PyMongoError as exc:
         logger.error(
             f"Database error during registration: {str(exc)}",
@@ -244,6 +253,7 @@ def verify_user_signup_otp(username: str, otp: str):
             },
         )
 
+        clear_otp_attempts(username)
         logger.info("User email verified successfully")
         return {
             "username": user["username"],

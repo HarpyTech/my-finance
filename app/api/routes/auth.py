@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 import logging
 
 from app.core.security import create_access_token
+from app.core.ratelimit import OtpRateLimitError
 from app.services.auth_service import (
     authenticate_user,
     register_user,
@@ -33,6 +34,11 @@ def api_register(payload: UserCreate):
     logger.info("Registration OTP request received")
     try:
         user = register_user(payload.username, payload.password)
+    except OtpRateLimitError as exc:
+        logger.warning(f"Rate limit exceeded for registration: {payload.username}")
+        response = Response(status_code=429)
+        response.headers["Retry-After"] = str(exc.retry_after_seconds)
+        return response
     except RuntimeError as exc:
         logger.error(f"Service unavailable during registration: {str(exc)}")
         raise HTTPException(
@@ -193,3 +199,81 @@ def get_csrf_token(request: Request):
     token = request.cookies.get("csrf_token")
     logger.debug("CSRF token requested")
     return {"csrf_token": token}
+
+
+@router.get("/test-email")
+def test_email_delivery(to_email: str):
+    """Test SMTP email delivery (development only).
+
+    Public endpoint that sends a test email to the provided address.
+    Returns success/failure status and helpful debug info.
+    """
+    from app.core.config import settings
+    import smtplib
+    from email.message import EmailMessage
+
+    logger.info(f"Testing email delivery for {to_email}")
+
+    if not settings.SMTP_HOST:
+        return {
+            "status": "not_configured",
+            "message": (
+                "SMTP is not configured. Configure SMTP_HOST "
+                "in environment to send real emails."
+            ),
+            "smtp_host": None,
+        }
+
+    try:
+        subject = "My Finance - Test Email"
+        body = (
+            "This is a test email from My Finance. "
+            "If you received this, SMTP is working correctly!"
+        )
+
+        logger.info("Preparing test email message")
+
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = settings.SMTP_FROM_EMAIL
+        message["To"] = to_email
+        message.set_content(body)
+
+        with smtplib.SMTP(
+            settings.SMTP_HOST,
+            settings.SMTP_PORT,
+            timeout=15,
+        ) as server:
+            server.ehlo()
+            if settings.SMTP_USE_TLS:
+                if not server.has_extn("STARTTLS"):
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=(
+                            "SMTP server does not support STARTTLS. "
+                            "Disable SMTP_USE_TLS or use a TLS-capable server."
+                        ),
+                    )
+                server.starttls()
+                server.ehlo()
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            server.send_message(message)
+
+        logger.info(f"Test email sent successfully to {to_email}")
+        return {
+            "status": "success",
+            "message": f"Test email sent to {to_email}",
+            "smtp_host": settings.SMTP_HOST,
+            "smtp_port": settings.SMTP_PORT,
+            "from_email": settings.SMTP_FROM_EMAIL,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Failed to send test email: {str(exc)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to send test email: {str(exc)}",
+        ) from exc
