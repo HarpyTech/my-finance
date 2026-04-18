@@ -29,8 +29,6 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
-    DEFAULT_LOGIN_PASSWORD: str
-
     MONGODB_URI: str = "mongodb://localhost:27017"
     MONGODB_DB: str = "my_finance"
     GEMINI_API_KEY: str | None = None

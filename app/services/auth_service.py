@@ -113,47 +113,10 @@ def _deliver_signup_otp(email: str, otp: str) -> None:
         raise RuntimeError("Failed to send verification email") from exc
 
 
-def _ensure_default_users() -> None:
-    """Ensure default users exist in the database"""
-    try:
-        logger.debug("Checking for default users")
-        users = get_users_collection()
-        defaults = [
-            {"username": "admin@fincorp.com", "role": "admin"},
-            {"username": "user@fincorp.com", "role": "user"},
-        ]
-
-        for user in defaults:
-            exists = users.find_one({"username": user["username"]}, {"_id": 1})
-            if not exists:
-                users.insert_one(
-                    {
-                        "username": user["username"],
-                        "password_hash": hash_password(settings.DEFAULT_LOGIN_PASSWORD),
-                        "role": user["role"],
-                        "email_verified": True,
-                    }
-                )
-                logger.info(f"Created default user with role: {user['role']}")
-            else:
-                users.update_one(
-                    {"_id": exists["_id"]},
-                    {"$set": {"email_verified": True}},
-                )
-                logger.debug(f"Default user with role {user['role']} exists")
-    except PyMongoError as exc:
-        logger.error(
-            f"Database error while ensuring default users: {str(exc)}",
-            exc_info=True,
-        )
-        raise
-
-
 def authenticate_user(username: str, password: str):
     """Authenticate a user with username and password"""
     logger.info("Authentication attempt initiated")
     try:
-        _ensure_default_users()
         users = get_users_collection()
         user = users.find_one({"username": username})
         if not user:
