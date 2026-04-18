@@ -5,12 +5,6 @@ import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
 const CATEGORIES = ['Food', 'Travel', 'Utilities', 'Shopping', 'Health', 'Other'];
-const LLM_OPTIONS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-pro',
-  'gemini-3-flash-preview',
-  'gemini-3.1-pro-preview',
-];
 
 export default function AddExpensePage() {
   const { logout } = useAuth();
@@ -26,7 +20,6 @@ export default function AddExpensePage() {
   const [aiInputText, setAiInputText] = useState('');
   const [aiImageFile, setAiImageFile] = useState(null);
   const [cameraImageFile, setCameraImageFile] = useState(null);
-  const [selectedLlmModel, setSelectedLlmModel] = useState('gemini-3-flash-preview');
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
   const [lastUsedLlmModel, setLastUsedLlmModel] = useState('');
@@ -89,7 +82,6 @@ export default function AddExpensePage() {
         formData.append('image', selectedImageFile);
       }
       formData.append('input_type', derivedInputType);
-      formData.append('llm_model', selectedLlmModel);
 
       const response = await apiRequest('/expenses/extract-and-create', {
         method: 'POST',
@@ -97,7 +89,7 @@ export default function AddExpensePage() {
       });
 
       setLastExtracted(response.extracted || null);
-      setLastUsedLlmModel(response.llm_model || selectedLlmModel);
+      setLastUsedLlmModel(response.llm_model || 'gemini-2.5-flash');
       setAiInputText('');
       setAiImageFile(null);
       setCameraImageFile(null);
@@ -189,19 +181,7 @@ export default function AddExpensePage() {
         <article className="panel">
           <h2>Add Expense From Text or Image</h2>
           <form onSubmit={addExpenseFromAi} className="stack-form">
-            <label>
-              AI Model
-              <select
-                value={selectedLlmModel}
-                onChange={(e) => setSelectedLlmModel(e.target.value)}
-              >
-                {LLM_OPTIONS.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* <p className="help-text">AI model: gemini-2.5-flash</p> */}
             <label>
               Text Input
               <textarea
@@ -248,7 +228,7 @@ export default function AddExpensePage() {
           {lastExtracted ? (
             <div className="extract-output">
               <h3>Last Extracted JSON</h3>
-              {lastUsedLlmModel ? <p>Model Used: {lastUsedLlmModel}</p> : null}
+              {/* {lastUsedLlmModel ? <p>Model Used: {lastUsedLlmModel}</p> : null} */}
               <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
             </div>
           ) : null}

@@ -21,6 +21,7 @@ _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?|```", re.IGNORECASE)
 _JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 _MAX_OUTPUT_TOKENS = 512
 _MAX_JSON_RETRIES = 2
+_PREFERRED_GEMINI_MODEL = "gemini-2.5-flash"
 _SUPPORTED_GEMINI_MODELS = (
     "gemini-2.5-flash",
     "gemini-2.5-pro",
@@ -38,7 +39,8 @@ PROMPT_TEMPLATE = """
                 {
                     "amount": the total amount paid only,
                     "category": what type of purchase,
-                    "bill_type": one of: grocery, restaurant, service, utility, or other,
+                    "bill_type": one of:
+                        grocery, restaurant, service, utility, or other,
                     "invoice_number": any receipt or transaction number,
                     "vendor": the store or business name,
                     "description": what was purchased short description,
@@ -47,14 +49,15 @@ PROMPT_TEMPLATE = """
                         {
                             "name": item name,
                             "quantity": item quantity,
-                            "unit_price": item price,
-                            "total": item total
+                            "price": item price
                         }
                     ]
                 }
 
                 Do not include tax fields.
-                Just give me back the JSON. If you're not sure about a value, use 0 for numbers or empty string for text.
+                Just give me back the JSON.
+                If you're not sure about a value,
+                use 0 for numbers or empty string for text.
 """.strip()
 
 _JSON_REPAIR_TEMPLATE = """
@@ -72,8 +75,7 @@ _JSON_REPAIR_TEMPLATE = """
         {
             "name": string,
             "quantity": number,
-            "unit_price": number,
-            "total": number
+            "price": number
         }
     ]
 }
@@ -89,13 +91,12 @@ def extract_expense_payload(
     text_input: str | None,
     image_bytes: bytes | None,
     image_mime_type: str | None,
-    llm_model: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Extract and normalize expense payload from text and/or image."""
     if not text_input and not image_bytes:
         raise ValueError("Provide either text_input or an image")
 
-    model_name = _resolve_model_name(llm_model)
+    model_name = _resolve_model_name()
     model = _get_model(model_name)
 
     prompt_parts: list[Any] = [PROMPT_TEMPLATE]
@@ -117,10 +118,13 @@ def extract_expense_payload(
     return normalized, model_name
 
 
-def _resolve_model_name(requested_model: str | None) -> str:
-    model_name = (requested_model or settings.GEMINI_MODEL or "").strip()
+def _resolve_model_name() -> str:
+    model_name = (settings.GEMINI_MODEL or "").strip()
     if not model_name:
         raise RuntimeError("GEMINI_MODEL is not configured")
+
+    if model_name != _PREFERRED_GEMINI_MODEL:
+        raise RuntimeError("GEMINI_MODEL must be set to gemini-2.5-flash")
 
     if model_name not in _SUPPORTED_GEMINI_MODELS:
         raise ValueError(

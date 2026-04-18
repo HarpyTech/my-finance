@@ -13,7 +13,7 @@ import logging
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_user
-from app.models.expense import ExpenseCreate, ExpenseInputType, ExpenseLlmModel
+from app.models.expense import ExpenseCreate, ExpenseInputType
 from app.services.expense_service import (
     add_expense,
     category_summary,
@@ -69,7 +69,6 @@ async def extract_and_create_expense(
     text_input: str | None = Form(default=None),
     image: UploadFile | None = File(default=None),
     input_type: ExpenseInputType | None = Form(default=None),
-    llm_model: ExpenseLlmModel | None = Form(default=None),
     user: str = Depends(get_current_user),
 ):
     """Extract expense details with Gemini and insert into DB."""
@@ -86,7 +85,6 @@ async def extract_and_create_expense(
             text_input=text_input,
             image_bytes=raw_image_bytes,
             image_mime_type=mime_type,
-            llm_model=llm_model,
         )
         del raw_image_bytes  # free original bytes early to reduce peak memory
 
