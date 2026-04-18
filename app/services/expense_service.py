@@ -6,6 +6,7 @@ import logging
 from app.db.mongo import (
     get_expense_line_items_collection,
     get_expenses_collection,
+    get_users_collection,
 )
 
 logger = logging.getLogger(__name__)
@@ -203,19 +204,25 @@ def list_expenses(username: str):
 def check_session_expense_limit(username: str) -> None:
     """Raise SessionExpenseLimitError if the overall expense limit is hit."""
     try:
+        disable_rate_limit, effective_limit = _get_user_rate_limit_config(
+            username,
+        )
+        if disable_rate_limit:
+            return
+
         expenses = get_expenses_collection()
         count = expenses.count_documents({"username": username})
 
-        if count >= SESSION_EXPENSE_LIMIT:
+        if count >= effective_limit:
             logger.warning(
                 "Expense limit reached for user %s: %d/%d",
                 username,
                 count,
-                SESSION_EXPENSE_LIMIT,
+                effective_limit,
             )
             raise SessionExpenseLimitError(
                 f"You have reached the maximum of "
-                f"{SESSION_EXPENSE_LIMIT} expenses. "
+                f"{effective_limit} expenses. "
                 "Please contact our customer team to continue."
             )
     except SessionExpenseLimitError:
@@ -234,15 +241,19 @@ def check_session_expense_limit(username: str) -> None:
 def get_expense_limit_status(username: str) -> dict:
     """Return expense limit status for the given user."""
     try:
+        disable_rate_limit, effective_limit = _get_user_rate_limit_config(
+            username,
+        )
         expenses = get_expenses_collection()
         count = expenses.count_documents({"username": username})
-        limit = SESSION_EXPENSE_LIMIT
-        remaining = max(limit - count, 0)
+        reached = (not disable_rate_limit) and count >= effective_limit
+        remaining = None if disable_rate_limit else max(effective_limit - count, 0)
         return {
-            "limit": limit,
+            "limit": effective_limit,
             "count": count,
             "remaining": remaining,
-            "reached": count >= limit,
+            "reached": reached,
+            "disable_rate_limit": disable_rate_limit,
         }
     except PyMongoError as exc:
         logger.error(
@@ -253,6 +264,38 @@ def get_expense_limit_status(username: str) -> dict:
         raise RuntimeError(
             "Failed to fetch expense limit status due to database error"
         ) from exc
+
+
+def _get_user_rate_limit_config(username: str) -> tuple[bool, int]:
+    """Return per-user rate limit config with fallback defaults."""
+    users = get_users_collection()
+    user = users.find_one(
+        {"username": username},
+        {"disable_rate_limit": 1, "expense_limit": 1},
+    )
+    if not user:
+        return False, SESSION_EXPENSE_LIMIT
+
+    default_patch: dict[str, bool | int] = {}
+    if "disable_rate_limit" not in user:
+        default_patch["disable_rate_limit"] = False
+    if "expense_limit" not in user:
+        default_patch["expense_limit"] = SESSION_EXPENSE_LIMIT
+    if default_patch:
+        users.update_one({"_id": user["_id"]}, {"$set": default_patch})
+
+    disable_rate_limit = bool(user.get("disable_rate_limit", False))
+
+    raw_limit = user.get("expense_limit", SESSION_EXPENSE_LIMIT)
+    try:
+        expense_limit = int(raw_limit)
+    except (TypeError, ValueError):
+        expense_limit = SESSION_EXPENSE_LIMIT
+
+    if expense_limit <= 0:
+        expense_limit = SESSION_EXPENSE_LIMIT
+
+    return disable_rate_limit, expense_limit
 
 
 def _normalize_tax_details(raw_tax_details: dict | None) -> dict:

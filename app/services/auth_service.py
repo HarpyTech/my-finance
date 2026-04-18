@@ -176,6 +176,8 @@ def register_user(username: str, password: str, role: str = "user"):
             "password_hash": hash_password(password),
             "role": role,
             "email_verified": False,
+            "expense_limit": 10,
+            "disable_rate_limit": False,
             "signup_otp_hash": hash_password(otp),
             "signup_otp_expires_at": otp_expires_at,
             "updated_at": _utcnow(),
@@ -378,6 +380,8 @@ def get_user_profile(username: str):
             "last_name": user.get("last_name"),
             "phone": user.get("phone"),
             "address": user.get("address"),
+            "expense_limit": user.get("expense_limit", 10),
+            "disable_rate_limit": user.get("disable_rate_limit", False),
         }
     except PyMongoError as exc:
         logger.error(

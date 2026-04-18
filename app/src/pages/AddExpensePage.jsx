@@ -42,6 +42,7 @@ export default function AddExpensePage() {
   const [lastUsedLlmModel, setLastUsedLlmModel] = useState('');
   const [error, setError] = useState('');
   const [sessionLimitReached, setSessionLimitReached] = useState(false);
+  const [expenseLimit, setExpenseLimit] = useState(10);
 
   useEffect(() => {
     syncExpenseLimitState();
@@ -50,6 +51,10 @@ export default function AddExpensePage() {
   async function syncExpenseLimitState() {
     try {
       const response = await apiRequest('/expenses/limit-status');
+      const effectiveLimit = Number(response.limit);
+      setExpenseLimit(
+        Number.isFinite(effectiveLimit) && effectiveLimit > 0 ? effectiveLimit : 10
+      );
       setSessionLimitReached(Boolean(response.reached));
     } catch {
       // Keep this non-blocking: user can still try submit and backend enforces limit.
@@ -173,8 +178,8 @@ export default function AddExpensePage() {
       {sessionLimitReached && (
         <div className="session-limit-banner" role="alert">
           <strong>Expense limit reached.</strong> You have added the maximum of{' '}
-          10 expenses allowed on your plan.{' '}
-          <a href={SUPPORT_MAILTO_LINK}>Contact our customer team</a> to
+          {expenseLimit} expenses allowed on your plan.{' '}
+          <a href={SUPPORT_MAILTO_LINK}>Contact our support team</a> to
           upgrade your plan or get help.
         </div>
       )}
