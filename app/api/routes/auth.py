@@ -269,9 +269,9 @@ def test_email_delivery(to_email: str):
         }
 
     try:
-        subject = "My Finance - Test Email"
+        subject = "FinTrackr - Test Email"
         body = (
-            "This is a test email from My Finance. "
+            "This is a test email from FinTrackr. "
             "If you received this, SMTP is working correctly!"
         )
 

@@ -1,4 +1,4 @@
-# My Finance
+# FinTrackr
 
 A personal finance management web app to track income, expenses, budgets and visualize financial health.
 

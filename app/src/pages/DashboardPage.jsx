@@ -155,7 +155,7 @@ export default function DashboardPage() {
 
       <header className="dashboard-header">
         <div>
-          <h1>My Finance Dashboard</h1>
+          <h1>FinTrackr Dashboard</h1>
         </div>
         <div className="header-actions">
           <TopNavigation />
