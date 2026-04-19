@@ -33,6 +33,75 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      - name: Build Cloud Run env file
+        shell: bash
+        env:
+          APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
+          APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+          APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.APP_ACCESS_TOKEN_EXPIRE_MINUTES }}
+          APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
+          APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
+          APP_MONGODB_URI: ${{ secrets.APP_MONGODB_URI }}
+          APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
+          APP_GEMINI_API_KEY: ${{ secrets.APP_GEMINI_API_KEY }}
+          APP_GEMINI_MODEL: ${{ secrets.APP_GEMINI_MODEL }}
+          APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
+          APP_SIGNUP_OTP_EXPIRY_MINUTES: ${{ secrets.APP_SIGNUP_OTP_EXPIRY_MINUTES }}
+          APP_SIGNUP_OTP_LENGTH: ${{ secrets.APP_SIGNUP_OTP_LENGTH }}
+          APP_SMTP_HOST: ${{ secrets.APP_SMTP_HOST }}
+          APP_SMTP_PORT: ${{ secrets.APP_SMTP_PORT }}
+          APP_SMTP_USERNAME: ${{ secrets.APP_SMTP_USERNAME }}
+          APP_SMTP_PASSWORD: ${{ secrets.APP_SMTP_PASSWORD }}
+          APP_SMTP_USE_TLS: ${{ secrets.APP_SMTP_USE_TLS }}
+          APP_SMTP_USE_SSL: ${{ secrets.APP_SMTP_USE_SSL }}
+          APP_SMTP_TIMEOUT_SECONDS: ${{ secrets.APP_SMTP_TIMEOUT_SECONDS }}
+          APP_SMTP_FROM_EMAIL: ${{ secrets.APP_SMTP_FROM_EMAIL }}
+          APP_SMTP_BCC_EMAILS: ${{ secrets.APP_SMTP_BCC_EMAILS }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          env_map = {
+              "PROJECT_NAME": os.environ.get("APP_PROJECT_NAME") or "Secure FastAPI",
+              "API_V1_STR": os.environ.get("APP_API_V1_STR") or "/api/v1",
+              "SECRET_KEY": os.environ.get("APP_SECRET_KEY") or "",
+              "ACCESS_TOKEN_EXPIRE_MINUTES": os.environ.get("APP_ACCESS_TOKEN_EXPIRE_MINUTES") or "30",
+              "ALGORITHM": os.environ.get("APP_ALGORITHM") or "HS256",
+              "CORS_ORIGINS": os.environ.get("APP_CORS_ORIGINS") or '["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000","http://127.0.0.1:5173"]',
+              "MONGODB_URI": os.environ.get("APP_MONGODB_URI") or "mongodb://localhost:27017",
+              "MONGODB_DB": os.environ.get("APP_MONGODB_DB") or "my_finance",
+              "GEMINI_API_KEY": os.environ.get("APP_GEMINI_API_KEY") or "",
+              "GEMINI_MODEL": os.environ.get("APP_GEMINI_MODEL") or "gemini-2.5-flash",
+              "DEFAULT_LOGIN_PASSWORD": os.environ.get("APP_DEFAULT_LOGIN_PASSWORD") or "",
+              "SIGNUP_OTP_EXPIRY_MINUTES": os.environ.get("APP_SIGNUP_OTP_EXPIRY_MINUTES") or "2",
+              "SIGNUP_OTP_LENGTH": os.environ.get("APP_SIGNUP_OTP_LENGTH") or "6",
+              "SMTP_HOST": os.environ.get("APP_SMTP_HOST") or "",
+              "SMTP_PORT": os.environ.get("APP_SMTP_PORT") or "587",
+              "SMTP_USERNAME": os.environ.get("APP_SMTP_USERNAME") or "",
+              "SMTP_PASSWORD": os.environ.get("APP_SMTP_PASSWORD") or "",
+              "SMTP_USE_TLS": os.environ.get("APP_SMTP_USE_TLS") or "true",
+              "SMTP_USE_SSL": os.environ.get("APP_SMTP_USE_SSL") or "false",
+              "SMTP_TIMEOUT_SECONDS": os.environ.get("APP_SMTP_TIMEOUT_SECONDS") or "15",
+              "SMTP_FROM_EMAIL": os.environ.get("APP_SMTP_FROM_EMAIL") or "no-reply@my-finance.local",
+              "SMTP_BCC_EMAILS": os.environ.get("APP_SMTP_BCC_EMAILS") or '["no-reply@harpytechco.in"]',
+          }
+
+          required_keys = ["SECRET_KEY", "MONGODB_URI", "DEFAULT_LOGIN_PASSWORD"]
+          missing_keys = [key for key in required_keys if not env_map[key]]
+          if missing_keys:
+              raise SystemExit(f"Missing required GitHub secrets: {', '.join(f'APP_{key}' for key in missing_keys)}")
+
+          lines = []
+          for key, value in env_map.items():
+              encoded = json.dumps(str(value))
+              lines.append(f"{key}: {encoded}")
+
+          Path(".cloudrun.env.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
       - name: Resolve deploy parameters
         shell: bash
         run: |
@@ -107,4 +176,5 @@ jobs:
             --cpu-boost \
             --execution-environment gen2 \
             --update-env-vars "BUILD_VERSION=${{ github.sha }}" \
+            --env-vars-file .cloudrun.env.yaml \
             --quiet
