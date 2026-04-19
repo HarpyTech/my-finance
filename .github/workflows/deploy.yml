@@ -1,8 +1,9 @@
-﻿name: Deploy to Cloud Run (main)
+name: Deploy to Cloud Run
 
 on:
   push:
     branches:
+      - develop
       - main
   workflow_dispatch:
 
@@ -34,17 +35,30 @@ jobs:
       - name: Resolve deploy parameters
         shell: bash
         run: |
-          REGION="${{ secrets.GCP_REGION }}"
-          if [ -z "${REGION}" ]; then
-            REGION="us-central1"
+          # Determine environment suffix from branch name
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "${BRANCH}" = "main" ]; then
+            ENV="prod"
+            DEFAULT_REGION="us-central1"
+          else
+            ENV="dev"
+            DEFAULT_REGION="us-east1"
           fi
 
-          SERVICE_NAME="${{ secrets.CLOUD_RUN_SERVICE }}"
-          if [ -z "${SERVICE_NAME}" ]; then
-            SERVICE_NAME="finance-prod"
-          elif [[ "${SERVICE_NAME}" != *-prod ]]; then
-            SERVICE_NAME="${SERVICE_NAME}-prod"
+          REGION="${{ secrets.GCP_REGION }}"
+          if [ -z "${REGION}" ]; then
+            REGION="${DEFAULT_REGION}"
           fi
+
+          BASE_SERVICE="${{ secrets.CLOUD_RUN_SERVICE }}"
+          if [ -z "${BASE_SERVICE}" ]; then
+            BASE_SERVICE="finance"
+          fi
+
+          # Strip any existing env suffix then re-apply the correct one
+          BASE_SERVICE="${BASE_SERVICE%-dev}"
+          BASE_SERVICE="${BASE_SERVICE%-prod}"
+          SERVICE_NAME="${BASE_SERVICE}-${ENV}"
 
           AR_REPOSITORY="${SERVICE_NAME}"
           AR_HOST="${REGION}-docker.pkg.dev"
@@ -80,7 +94,6 @@ jobs:
           docker push "${IMAGE_URI}"
 
       - name: Deploy to Cloud Run
-        shell: bash
         run: |
           gcloud run deploy "${SERVICE_NAME}" \
             --image "${IMAGE_URI}" \
