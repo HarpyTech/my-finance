@@ -155,7 +155,7 @@ export default function DashboardPage() {
 
       <header className="dashboard-header">
         <div className="dashboard-header-title">
-          <img src="/logo.svg" alt="FinTrackr" className="dashboard-logo" />
+          <img src="/assets/logo.svg" alt="FinTrackr" className="dashboard-logo" />
           <h1>Dashboard</h1>
         </div>
         <div className="header-actions">
