@@ -114,8 +114,9 @@ Example environment variable with fallback:
 - ❌ Never commit `.env` to version control
 
 ### CI/CD
-- ✅ Use GitHub Secrets, GitLab CI/CD variables, or Azure DevOps Secure Files
-- ✅ Inject as environment variables during build/deploy
+- ✅ Use GitHub secrets only for deployment-scoped values such as cloud credentials, project IDs, regions, and service names
+- ✅ Store application runtime values in a managed secret store such as Google Secret Manager
+- ✅ Bind secrets directly to the runtime platform during deploy instead of writing them into generated env files
 - ❌ Never log secret values
 
 ### Production
@@ -124,6 +125,42 @@ Example environment variable with fallback:
 - ✅ Use cloud provider secret managers (Azure Key Vault, AWS Secrets Manager, Google Secret Manager)
 - ✅ Rotate secrets regularly
 - ❌ Never use default values in production
+
+## Google Cloud Run + Secret Manager
+
+For GitHub Actions deployments to Cloud Run, keep only deployment configuration in GitHub secrets and store all application runtime values in Google Secret Manager.
+
+Recommended GitHub secrets:
+- `GCP_SA_KEY`
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `CLOUD_RUN_SERVICE`
+
+Recommended Secret Manager secret names:
+- `SECRET_KEY`
+- `DEFAULT_LOGIN_PASSWORD`
+- `MONGODB_URI`
+- `MONGODB_DB`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_USE_TLS`
+- `SMTP_USE_SSL`
+- `SMTP_TIMEOUT_SECONDS`
+- `SMTP_FROM_EMAIL`
+- `SMTP_BCC_EMAILS`
+- `PROJECT_NAME`
+- `API_V1_STR`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `ALGORITHM`
+- `CORS_ORIGINS`
+- `SIGNUP_OTP_EXPIRY_MINUTES`
+- `SIGNUP_OTP_LENGTH`
+
+Cloud Run injects those secrets as environment variables, which the application already reads through `app/core/config.py`.
 
 ## Environment Variables Reference
 
