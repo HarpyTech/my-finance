@@ -1,16 +1,27 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
 const CATEGORIES = ['Food', 'Travel', 'Utilities', 'Shopping', 'Health', 'Other'];
-const LLM_OPTIONS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-pro',
-  'gemini-3-flash-preview',
-  'gemini-3.1-pro-preview',
-];
+const SUPPORT_EMAIL = 'support@harpytechco.in';
+const SUPPORT_SUBJECT = 'Request to increase expense limit';
+const SUPPORT_BODY_TEMPLATE = [
+  'Hi Customer Support Team,',
+  '',
+  'I have reached the 10 expense limit on my account and request a limit increase.',
+  '',
+  'Account email: ',
+  'Requested new limit: ',
+  'Reason: ',
+  '',
+  'Thank you,',
+].join('\n');
+const SUPPORT_MAILTO_LINK =
+  `mailto:${SUPPORT_EMAIL}` +
+  `?subject=${encodeURIComponent(SUPPORT_SUBJECT)}` +
+  `&body=${encodeURIComponent(SUPPORT_BODY_TEMPLATE)}`;
 
 export default function AddExpensePage() {
   const { logout } = useAuth();
@@ -26,11 +37,29 @@ export default function AddExpensePage() {
   const [aiInputText, setAiInputText] = useState('');
   const [aiImageFile, setAiImageFile] = useState(null);
   const [cameraImageFile, setCameraImageFile] = useState(null);
-  const [selectedLlmModel, setSelectedLlmModel] = useState('gemini-3-flash-preview');
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
   const [lastUsedLlmModel, setLastUsedLlmModel] = useState('');
   const [error, setError] = useState('');
+  const [sessionLimitReached, setSessionLimitReached] = useState(false);
+  const [expenseLimit, setExpenseLimit] = useState(10);
+
+  useEffect(() => {
+    syncExpenseLimitState();
+  }, []);
+
+  async function syncExpenseLimitState() {
+    try {
+      const response = await apiRequest('/expenses/limit-status');
+      const effectiveLimit = Number(response.limit);
+      setExpenseLimit(
+        Number.isFinite(effectiveLimit) && effectiveLimit > 0 ? effectiveLimit : 10
+      );
+      setSessionLimitReached(Boolean(response.reached));
+    } catch {
+      // Keep this non-blocking: user can still try submit and backend enforces limit.
+    }
+  }
 
   async function handleLogout() {
     await logout();
@@ -58,8 +87,13 @@ export default function AddExpensePage() {
         amount: '',
         description: '',
       }));
+      await syncExpenseLimitState();
     } catch (err) {
-      setError(err.message);
+      if (err.status === 429) {
+        setSessionLimitReached(true);
+      } else {
+        setError(err.message);
+      }
     }
   }
 
@@ -89,7 +123,6 @@ export default function AddExpensePage() {
         formData.append('image', selectedImageFile);
       }
       formData.append('input_type', derivedInputType);
-      formData.append('llm_model', selectedLlmModel);
 
       const response = await apiRequest('/expenses/extract-and-create', {
         method: 'POST',
@@ -97,12 +130,17 @@ export default function AddExpensePage() {
       });
 
       setLastExtracted(response.extracted || null);
-      setLastUsedLlmModel(response.llm_model || selectedLlmModel);
+      setLastUsedLlmModel(response.llm_model || 'gemini-2.5-flash');
       setAiInputText('');
       setAiImageFile(null);
       setCameraImageFile(null);
+      await syncExpenseLimitState();
     } catch (err) {
-      setError(err.message);
+      if (err.status === 429) {
+        setSessionLimitReached(true);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setExtracting(false);
     }
@@ -136,6 +174,15 @@ export default function AddExpensePage() {
           <button onClick={handleLogout}>Logout</button>
         </div>
       </header>
+
+      {sessionLimitReached && (
+        <div className="session-limit-banner" role="alert">
+          <strong>Expense limit reached.</strong> You have added the maximum of{' '}
+          {expenseLimit} expenses allowed on your plan.{' '}
+          <a href={SUPPORT_MAILTO_LINK}>Contact our support team</a> to
+          upgrade your plan or get help.
+        </div>
+      )}
 
       <section className="panel-grid">
         <article className="panel">
@@ -182,26 +229,14 @@ export default function AddExpensePage() {
                 onChange={(e) => setExpenseForm((prev) => ({ ...prev, description: e.target.value }))}
               />
             </label>
-            <button type="submit">Save Expense</button>
+            <button type="submit" disabled={sessionLimitReached}>Save Expense</button>
           </form>
         </article>
 
         <article className="panel">
           <h2>Add Expense From Text or Image</h2>
           <form onSubmit={addExpenseFromAi} className="stack-form">
-            <label>
-              AI Model
-              <select
-                value={selectedLlmModel}
-                onChange={(e) => setSelectedLlmModel(e.target.value)}
-              >
-                {LLM_OPTIONS.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* <p className="help-text">AI model: gemini-2.5-flash</p> */}
             <label>
               Text Input
               <textarea
@@ -241,14 +276,14 @@ export default function AddExpensePage() {
                 ? 'On mobile you can either upload an image or open the camera directly.'
                 : 'Upload a receipt image or paste text for AI extraction.'}
             </p>
-            <button type="submit" disabled={extracting}>
+            <button type="submit" disabled={extracting || sessionLimitReached}>
               {extracting ? 'Extracting...' : 'Extract + Save Expense'}
             </button>
           </form>
           {lastExtracted ? (
             <div className="extract-output">
               <h3>Last Extracted JSON</h3>
-              {lastUsedLlmModel ? <p>Model Used: {lastUsedLlmModel}</p> : null}
+              {/* {lastUsedLlmModel ? <p>Model Used: {lastUsedLlmModel}</p> : null} */}
               <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
             </div>
           ) : null}

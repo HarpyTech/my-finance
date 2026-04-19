@@ -1,49 +1,122 @@
 from pymongo.errors import PyMongoError
 import logging
+import random
+from datetime import datetime, timedelta, timezone
+import socket
+import smtplib
+from email.message import EmailMessage
 
 from app.core.security import verify_password, hash_password
 from app.core.config import settings
+from app.core.ratelimit import (
+    check_and_record_otp_request,
+    clear_otp_attempts,
+    OtpRateLimitError,
+)
 from app.db.mongo import get_users_collection
 
 logger = logging.getLogger(__name__)
 
 
-def _ensure_default_users() -> None:
-    """Ensure default users exist in the database"""
-    try:
-        logger.debug("Checking for default users")
-        users = get_users_collection()
-        defaults = [
-            {"username": "admin@fincorp.com", "role": "admin"},
-            {"username": "user@fincorp.com", "role": "user"},
-        ]
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
-        for user in defaults:
-            exists = users.find_one({"username": user["username"]}, {"_id": 1})
-            if not exists:
-                users.insert_one(
-                    {
-                        "username": user["username"],
-                        "password_hash": hash_password(settings.DEFAULT_LOGIN_PASSWORD),
-                        "role": user["role"],
-                    }
-                )
-                logger.info(f"Created default user with role: {user['role']}")
-            else:
-                logger.debug(f"Default user with role {user['role']} exists")
-    except PyMongoError as exc:
+
+def _is_otp_expired(expires_at: datetime | None) -> bool:
+    if not expires_at:
+        return True
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return _utcnow() > expires_at
+
+
+def _generate_signup_otp() -> str:
+    digits = max(4, min(settings.SIGNUP_OTP_LENGTH, 8))
+    return "".join(random.choices("0123456789", k=digits))
+
+
+def _deliver_signup_otp(email: str, otp: str) -> None:
+    subject = "Verify your My Finance account"
+    body = (
+        "Your My Finance verification code is: "
+        f"{otp}. "
+        "This code expires in "
+        f"{settings.SIGNUP_OTP_EXPIRY_MINUTES} minutes."
+    )
+
+    if not settings.SMTP_HOST:
+        logger.warning(
+            "SMTP is not configured. OTP for %s is %s (development fallback).",
+            email,
+            otp,
+        )
+        return
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = settings.SMTP_FROM_EMAIL
+    message["To"] = email
+    if settings.SMTP_BCC_EMAILS:
+        message["Bcc"] = ", ".join(settings.SMTP_BCC_EMAILS)
+    message.set_content(body)
+
+    try:
+        smtp_client = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
+
+        with smtp_client(
+            settings.SMTP_HOST,
+            settings.SMTP_PORT,
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
+        ) as server:
+            if not settings.SMTP_USE_SSL:
+                server.ehlo()
+                if settings.SMTP_USE_TLS:
+                    if not server.has_extn("STARTTLS"):
+                        raise RuntimeError(
+                            "SMTP server does not support STARTTLS. "
+                            "Disable SMTP_USE_TLS or use a TLS-capable server."
+                        )
+                    server.starttls()
+                    server.ehlo()
+
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
+            server.send_message(message)
+
+        logger.info("Verification OTP email sent to %s", email)
+    except (
+        TimeoutError,
+        socket.timeout,
+        smtplib.SMTPServerDisconnected,
+    ) as exc:
         logger.error(
-            f"Database error while ensuring default users: {str(exc)}",
+            ("Failed to send OTP email to %s " "due to SMTP timeout/disconnect: %s"),
+            email,
+            str(exc),
             exc_info=True,
         )
-        raise
+        mode = "ssl" if settings.SMTP_USE_SSL else "plain/starttls"
+        raise RuntimeError(
+            "SMTP connection timed out or was closed by server. "
+            f"host={settings.SMTP_HOST} "
+            f"port={settings.SMTP_PORT} "
+            f"mode={mode}."
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Failed to send OTP email to %s: %s",
+            email,
+            str(exc),
+            exc_info=True,
+        )
+        raise RuntimeError("Failed to send verification email") from exc
 
 
 def authenticate_user(username: str, password: str):
     """Authenticate a user with username and password"""
     logger.info("Authentication attempt initiated")
     try:
-        _ensure_default_users()
         users = get_users_collection()
         user = users.find_one({"username": username})
         if not user:
@@ -53,6 +126,16 @@ def authenticate_user(username: str, password: str):
         if not verify_password(password, user["password_hash"]):
             logger.warning("Authentication failed: Invalid password")
             return None
+
+        if not user.get("email_verified", False):
+            logger.warning("Authentication failed: Email not verified")
+            return {"requires_verification": True}
+
+        # Record the login timestamp to enable per-session rate limiting.
+        users.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"last_login_at": _utcnow()}},
+        )
 
         logger.info("User authenticated successfully")
         return {
@@ -74,28 +157,51 @@ def authenticate_user(username: str, password: str):
 
 
 def register_user(username: str, password: str, role: str = "user"):
-    """Register a new user"""
-    logger.info("User registration attempt initiated")
+    """Create or refresh an unverified user and send signup OTP."""
+    logger.info("User registration OTP request initiated")
     try:
+        check_and_record_otp_request(username)
         users = get_users_collection()
-        exists = users.find_one({"username": username}, {"_id": 1})
-        if exists:
-            logger.warning("Registration failed: User already exists")
+        existing_user = users.find_one({"username": username})
+        if existing_user and existing_user.get("email_verified", False):
+            logger.warning("Registration failed: User already exists and is verified")
             return None
 
-        users.insert_one(
-            {
-                "username": username,
-                "password_hash": hash_password(password),
-                "role": role,
-            }
+        otp = _generate_signup_otp()
+        otp_expires_at = _utcnow() + timedelta(
+            minutes=settings.SIGNUP_OTP_EXPIRY_MINUTES
         )
+        update_doc = {
+            "username": username,
+            "password_hash": hash_password(password),
+            "role": role,
+            "email_verified": False,
+            "expense_limit": 10,
+            "disable_rate_limit": False,
+            "signup_otp_hash": hash_password(otp),
+            "signup_otp_expires_at": otp_expires_at,
+            "updated_at": _utcnow(),
+        }
 
-        logger.info(f"User registered successfully with role: {role}")
+        if existing_user:
+            users.update_one(
+                {"_id": existing_user["_id"]},
+                {"$set": update_doc},
+            )
+        else:
+            users.insert_one({**update_doc, "created_at": _utcnow()})
+
+        _deliver_signup_otp(username, otp)
+
+        logger.info(f"OTP generated for user registration with role: {role}")
         return {
             "username": username,
             "role": role,
+            "verification_required": True,
         }
+    except OtpRateLimitError:
+        logger.warning(f"OTP rate limit exceeded for {username}")
+        raise
     except PyMongoError as exc:
         logger.error(
             f"Database error during registration: {str(exc)}",
@@ -105,6 +211,123 @@ def register_user(username: str, password: str, role: str = "user"):
     except Exception as exc:
         logger.error(
             f"Unexpected error during registration: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+def resend_signup_otp(username: str):
+    """Resend OTP for users who registered but are still unverified."""
+    logger.info("Signup OTP resend request initiated")
+    try:
+        check_and_record_otp_request(username)
+        users = get_users_collection()
+        user = users.find_one({"username": username})
+        if not user:
+            logger.warning("OTP resend failed: User not found")
+            return None
+
+        if user.get("email_verified", False):
+            logger.warning("OTP resend failed: User already verified")
+            return {"error": "already_verified"}
+
+        otp = _generate_signup_otp()
+        otp_expires_at = _utcnow() + timedelta(
+            minutes=settings.SIGNUP_OTP_EXPIRY_MINUTES
+        )
+
+        users.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "signup_otp_hash": hash_password(otp),
+                    "signup_otp_expires_at": otp_expires_at,
+                    "updated_at": _utcnow(),
+                }
+            },
+        )
+
+        _deliver_signup_otp(username, otp)
+        logger.info("OTP resend successful")
+        return {
+            "username": username,
+            "verification_required": True,
+        }
+    except OtpRateLimitError:
+        logger.warning(f"OTP resend rate limit exceeded for {username}")
+        raise
+    except PyMongoError as exc:
+        logger.error(
+            f"Database error during OTP resend: {str(exc)}",
+            exc_info=True,
+        )
+        raise RuntimeError("Failed to resend OTP due to database error") from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error during OTP resend: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+def verify_user_signup_otp(username: str, otp: str):
+    """Verify user OTP and activate account for login"""
+    logger.info("Signup OTP verification attempt initiated")
+    try:
+        users = get_users_collection()
+        user = users.find_one({"username": username})
+        if not user:
+            logger.warning("Signup OTP verification failed: User not found")
+            return None
+
+        if user.get("email_verified", False):
+            logger.info("Signup OTP verification skipped: User already verified")
+            return {
+                "username": user["username"],
+                "role": user.get("role", "user"),
+                "already_verified": True,
+            }
+
+        otp_hash = user.get("signup_otp_hash")
+        otp_expires_at = user.get("signup_otp_expires_at")
+        if not otp_hash or _is_otp_expired(otp_expires_at):
+            logger.warning("Signup OTP verification failed: OTP expired or missing")
+            return {"error": "OTP expired"}
+
+        if not verify_password(otp, otp_hash):
+            logger.warning("Signup OTP verification failed: Invalid OTP")
+            return {"error": "Invalid OTP"}
+
+        users.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "email_verified": True,
+                    "updated_at": _utcnow(),
+                },
+                "$unset": {
+                    "signup_otp_hash": "",
+                    "signup_otp_expires_at": "",
+                },
+            },
+        )
+
+        clear_otp_attempts(username)
+        logger.info("User email verified successfully")
+        return {
+            "username": user["username"],
+            "role": user.get("role", "user"),
+            "email_verified": True,
+        }
+    except PyMongoError as exc:
+        logger.error(
+            f"Database error during signup OTP verification: {str(exc)}",
+            exc_info=True,
+        )
+        raise RuntimeError("Failed to verify user due to database error") from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error during signup OTP verification: {str(exc)}",
             exc_info=True,
         )
         raise
@@ -157,6 +380,8 @@ def get_user_profile(username: str):
             "last_name": user.get("last_name"),
             "phone": user.get("phone"),
             "address": user.get("address"),
+            "expense_limit": user.get("expense_limit", 10),
+            "disable_rate_limit": user.get("disable_rate_limit", False),
         }
     except PyMongoError as exc:
         logger.error(

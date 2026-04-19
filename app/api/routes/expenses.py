@@ -13,13 +13,16 @@ import logging
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_user
-from app.models.expense import ExpenseCreate, ExpenseInputType, ExpenseLlmModel
+from app.models.expense import ExpenseCreate, ExpenseInputType
 from app.services.expense_service import (
     add_expense,
     category_summary,
+    check_session_expense_limit,
+    get_expense_limit_status,
     list_expenses,
     monthly_summary,
     yearly_summary,
+    SessionExpenseLimitError,
 )
 from app.services.expense_extraction_service import extract_expense_payload
 
@@ -35,6 +38,7 @@ def create_expense(
     """Create a new expense"""
     logger.info("Create expense request received")
     try:
+        check_session_expense_limit(user)
         result = add_expense(
             username=user,
             amount=payload.amount,
@@ -45,11 +49,16 @@ def create_expense(
             vendor=payload.vendor,
             description=payload.description,
             expense_date=payload.expense_date,
-            tax_details=payload.tax_details.model_dump(),
             line_items=[item.model_dump() for item in payload.line_items],
         )
         logger.info("Expense created successfully")
         return result
+    except SessionExpenseLimitError as exc:
+        logger.warning(f"Session expense limit reached for user {user}: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
     except RuntimeError as exc:
         logger.error(f"Service error creating expense: {str(exc)}")
         raise HTTPException(
@@ -69,12 +78,13 @@ async def extract_and_create_expense(
     text_input: str | None = Form(default=None),
     image: UploadFile | None = File(default=None),
     input_type: ExpenseInputType | None = Form(default=None),
-    llm_model: ExpenseLlmModel | None = Form(default=None),
     user: str = Depends(get_current_user),
 ):
     """Extract expense details with Gemini and insert into DB."""
     logger.info("Extract-and-create expense request received")
     try:
+        # Enforce limit before reading image bytes or calling Gemini.
+        check_session_expense_limit(user)
         raw_image_bytes: bytes | None = None
         if image is not None:
             # Keep upload untouched: read and forward original bytes as-is.
@@ -86,7 +96,6 @@ async def extract_and_create_expense(
             text_input=text_input,
             image_bytes=raw_image_bytes,
             image_mime_type=mime_type,
-            llm_model=llm_model,
         )
         del raw_image_bytes  # free original bytes early to reduce peak memory
 
@@ -102,7 +111,6 @@ async def extract_and_create_expense(
             description=extracted["description"],
             expense_date=date.fromisoformat(extracted["expense_date"]),
             llm_model=used_llm_model,
-            tax_details=extracted["tax_details"],
             line_items=extracted["line_items"],
         )
 
@@ -116,6 +124,12 @@ async def extract_and_create_expense(
         logger.warning(f"Invalid extract-and-create request: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except SessionExpenseLimitError as exc:
+        logger.warning(f"Session expense limit reached for user {user}: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         ) from exc
     except RuntimeError as exc:
@@ -163,6 +177,37 @@ def get_expenses(user: str = Depends(get_current_user)):
     except Exception as exc:
         logger.error(
             f"Unexpected error fetching expenses: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+@router.get("/limit-status")
+def get_expense_limit_status_route(user: str = Depends(get_current_user)):
+    """Get expense-limit status for the current user."""
+    logger.info("Expense limit status request received")
+    try:
+        result = get_expense_limit_status(user)
+        logger.info(
+            "Expense limit status retrieved for user %s: %d/%d",
+            user,
+            result["count"],
+            result["limit"],
+        )
+        return result
+    except RuntimeError as exc:
+        logger.error(
+            "Service error fetching expense limit status: %s",
+            str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Unexpected error fetching expense limit status: %s",
+            str(exc),
             exc_info=True,
         )
         raise

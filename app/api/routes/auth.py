@@ -2,8 +2,19 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 import logging
 
 from app.core.security import create_access_token
-from app.services.auth_service import authenticate_user, register_user
-from app.models.user import UserCreate, UserLogin
+from app.core.ratelimit import OtpRateLimitError
+from app.services.auth_service import (
+    authenticate_user,
+    register_user,
+    resend_signup_otp,
+    verify_user_signup_otp,
+)
+from app.models.user import (
+    UserCreate,
+    UserLogin,
+    UserResendOtp,
+    UserVerifySignup,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,10 +36,15 @@ def _set_session_cookie(response: Response, token: str) -> None:
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def api_register(payload: UserCreate):
-    """Register a new user"""
-    logger.info("Registration request received")
+    """Start registration by generating OTP and sending it to email"""
+    logger.info("Registration OTP request received")
     try:
         user = register_user(payload.username, payload.password)
+    except OtpRateLimitError as exc:
+        logger.warning(f"Rate limit exceeded for registration: {payload.username}")
+        response = Response(status_code=429)
+        response.headers["Retry-After"] = str(exc.retry_after_seconds)
+        return response
     except RuntimeError as exc:
         logger.error(f"Service unavailable during registration: {str(exc)}")
         raise HTTPException(
@@ -37,16 +53,90 @@ def api_register(payload: UserCreate):
         ) from exc
 
     if not user:
-        logger.warning("Registration failed: User already exists")
+        logger.warning("Registration failed: User already exists and verified")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User already exists",
         )
 
-    logger.info("User registered successfully")
+    logger.info("Registration OTP sent successfully")
     return {
-        "message": "User registered successfully",
+        "message": "OTP sent to your email. Verify to complete registration.",
         "user": user,
+    }
+
+
+@router.post("/register/verify", status_code=status.HTTP_200_OK)
+def api_verify_register(payload: UserVerifySignup):
+    """Verify OTP and activate user account"""
+    logger.info("Registration OTP verification request received")
+    try:
+        result = verify_user_signup_otp(payload.username, payload.otp)
+    except RuntimeError as exc:
+        logger.error(f"Service unavailable during OTP verification: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if result.get("error") == "OTP expired":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP expired. Please register again to receive a new OTP.",
+        )
+
+    if result.get("error") == "Invalid OTP":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP",
+        )
+
+    return {
+        "message": "Email verified successfully. You can now log in.",
+        "user": result,
+    }
+
+
+@router.post("/register/resend-otp", status_code=status.HTTP_200_OK)
+def api_resend_register_otp(payload: UserResendOtp):
+    """Resend OTP for existing users that are not verified yet."""
+    logger.info("Registration OTP resend request received")
+    try:
+        result = resend_signup_otp(payload.username)
+    except OtpRateLimitError as exc:
+        logger.warning(f"Rate limit exceeded for OTP resend: {payload.username}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
+    except RuntimeError as exc:
+        logger.error(f"Service unavailable during OTP resend: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if result.get("error") == "already_verified":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already verified. Please log in.",
+        )
+
+    return {
+        "message": "A new OTP has been sent to your email.",
+        "user": result,
     }
 
 
@@ -98,6 +188,13 @@ async def api_login(request: Request, response: Response):
             detail="Invalid credentials",
         )
 
+    if user.get("requires_verification"):
+        logger.warning("Login failed: User email not verified")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email not verified. Please verify your email using OTP.",
+        )
+
     token = create_access_token({"username": user["username"], "role": user["role"]})
 
     _set_session_cookie(response, token)
@@ -145,3 +242,105 @@ def get_csrf_token(request: Request):
     token = request.cookies.get("csrf_token")
     logger.debug("CSRF token requested")
     return {"csrf_token": token}
+
+
+@router.get("/test-email")
+def test_email_delivery(to_email: str):
+    """Test SMTP email delivery (development only).
+
+    Public endpoint that sends a test email to the provided address.
+    Returns success/failure status and helpful debug info.
+    """
+    from app.core.config import settings
+    import socket
+    import smtplib
+    from email.message import EmailMessage
+
+    logger.info(f"Testing email delivery for {to_email}")
+
+    if not settings.SMTP_HOST:
+        return {
+            "status": "not_configured",
+            "message": (
+                "SMTP is not configured. Configure SMTP_HOST "
+                "in environment to send real emails."
+            ),
+            "smtp_host": None,
+        }
+
+    try:
+        subject = "My Finance - Test Email"
+        body = (
+            "This is a test email from My Finance. "
+            "If you received this, SMTP is working correctly!"
+        )
+
+        logger.info("Preparing test email message")
+
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = settings.SMTP_FROM_EMAIL
+        message["To"] = to_email
+        if settings.SMTP_BCC_EMAILS:
+            message["Bcc"] = ", ".join(settings.SMTP_BCC_EMAILS)
+        message.set_content(body)
+
+        smtp_client = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
+
+        with smtp_client(
+            settings.SMTP_HOST,
+            settings.SMTP_PORT,
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
+        ) as server:
+            if not settings.SMTP_USE_SSL:
+                server.ehlo()
+                if settings.SMTP_USE_TLS:
+                    if not server.has_extn("STARTTLS"):
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=(
+                                "SMTP server does not support STARTTLS. "
+                                "Disable SMTP_USE_TLS "
+                                "or use a TLS-capable server."
+                            ),
+                        )
+                    server.starttls()
+                    server.ehlo()
+            if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            server.send_message(message)
+
+        logger.info(f"Test email sent successfully to {to_email}")
+        return {
+            "status": "success",
+            "message": f"Test email sent to {to_email}",
+            "smtp_host": settings.SMTP_HOST,
+            "smtp_port": settings.SMTP_PORT,
+            "from_email": settings.SMTP_FROM_EMAIL,
+        }
+
+    except HTTPException:
+        raise
+    except (
+        TimeoutError,
+        socket.timeout,
+        smtplib.SMTPServerDisconnected,
+    ) as exc:
+        logger.error(f"Failed to send test email: {str(exc)}", exc_info=True)
+        mode = "ssl" if settings.SMTP_USE_SSL else "plain/starttls"
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "SMTP connection timed out or was closed by server. "
+                f"host={settings.SMTP_HOST} "
+                f"port={settings.SMTP_PORT} "
+                f"mode={mode}. "
+                "Verify SMTP_HOST/SMTP_PORT and TLS/SSL settings."
+            ),
+        ) from exc
+    except Exception as exc:
+        logger.error(f"Failed to send test email: {str(exc)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to send test email: {str(exc)}",
+        ) from exc

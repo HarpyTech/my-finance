@@ -21,6 +21,7 @@ _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?|```", re.IGNORECASE)
 _JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 _MAX_OUTPUT_TOKENS = 512
 _MAX_JSON_RETRIES = 2
+_PREFERRED_GEMINI_MODEL = "gemini-2.5-flash"
 _SUPPORTED_GEMINI_MODELS = (
     "gemini-2.5-flash",
     "gemini-2.5-pro",
@@ -31,34 +32,32 @@ _gemini_models: dict[str, genai.GenerativeModel] = {}
 
 
 PROMPT_TEMPLATE = """
-                Help me organize this purchase info. I need it in JSON format so I can track my spending.
+                Help me organize this purchase info.
+                I need it in JSON format so I can track my spending.
 
                 Here's the structure I need:
                 {
-                    "amount": the total amount paid,
+                    "amount": the total amount paid only,
                     "category": what type of purchase,
-                    "bill_type": one of: grocery, restaurant, service, utility, or other,
+                    "bill_type": one of:
+                        grocery, restaurant, service, utility, or other,
                     "invoice_number": any receipt or transaction number,
                     "vendor": the store or business name,
-                    "description": what was purchased,
+                    "description": what was purchased short description,
                     "expense_date": the date in YYYY-MM-DD format,
-                    "tax_details": {
-                        "subtotal": 0,
-                        "tax": 0,
-                        "cgst": 0,
-                        "sgst": 0,
-                        "igst": 0,
-                        "vat": 0,
-                        "service_tax": 0,
-                        "cess": 0,
-                        "tip": 0,
-                        "discount": 0,
-                        "total_tax": 0
-                    },
-                    "line_items": [List of sub expenses / items along with their individual price]
+                    "line_items": [
+                        {
+                            "name": item name,
+                            "quantity": item quantity,
+                            "price": item price
+                        }
+                    ]
                 }
 
-                Just give me back the JSON. If you're not sure about a value, use 0 for numbers or empty string for text.
+                Do not include tax fields.
+                Just give me back the JSON.
+                If you're not sure about a value,
+                use 0 for numbers or empty string for text.
 """.strip()
 
 _JSON_REPAIR_TEMPLATE = """
@@ -72,20 +71,13 @@ _JSON_REPAIR_TEMPLATE = """
   "vendor": string,
   "description": string,
   "expense_date": "YYYY-MM-DD",
-  "tax_details": {
-    "subtotal": number,
-    "tax": number,
-    "cgst": number,
-    "sgst": number,
-    "igst": number,
-    "vat": number,
-    "service_tax": number,
-    "cess": number,
-    "tip": number,
-    "discount": number,
-    "total_tax": number
-  },
-  "line_items": []
+    "line_items": [
+        {
+            "name": string,
+            "quantity": number,
+            "price": number
+        }
+    ]
 }
 
     Just the JSON, please.
@@ -99,13 +91,12 @@ def extract_expense_payload(
     text_input: str | None,
     image_bytes: bytes | None,
     image_mime_type: str | None,
-    llm_model: str | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Extract and normalize expense payload from text and/or image."""
     if not text_input and not image_bytes:
         raise ValueError("Provide either text_input or an image")
 
-    model_name = _resolve_model_name(llm_model)
+    model_name = _resolve_model_name()
     model = _get_model(model_name)
 
     prompt_parts: list[Any] = [PROMPT_TEMPLATE]
@@ -127,10 +118,13 @@ def extract_expense_payload(
     return normalized, model_name
 
 
-def _resolve_model_name(requested_model: str | None) -> str:
-    model_name = (requested_model or settings.GEMINI_MODEL or "").strip()
+def _resolve_model_name() -> str:
+    model_name = (settings.GEMINI_MODEL or "").strip()
     if not model_name:
         raise RuntimeError("GEMINI_MODEL is not configured")
+
+    if model_name != _PREFERRED_GEMINI_MODEL:
+        raise RuntimeError("GEMINI_MODEL must be set to gemini-2.5-flash")
 
     if model_name not in _SUPPORTED_GEMINI_MODELS:
         raise ValueError(
@@ -288,7 +282,6 @@ def _normalize_payload(
     )
 
     expense_date = _normalize_date(raw.get("expense_date") or raw.get("date"))
-    tax_details = _normalize_tax_details(raw)
 
     payload = {
         "amount": round(amount, 2),
@@ -298,7 +291,6 @@ def _normalize_payload(
         "vendor": vendor,
         "description": description,
         "expense_date": expense_date.isoformat(),
-        "tax_details": tax_details,
         "line_items": line_items,
     }
 
@@ -388,44 +380,6 @@ def _to_float(value: Any) -> float | None:
         return float(text)
     except ValueError:
         return None
-
-
-def _normalize_tax_details(raw: dict[str, Any]) -> dict[str, float]:
-    tax_raw = raw.get("tax_details") if isinstance(raw.get("tax_details"), dict) else {}
-
-    normalized = {
-        "subtotal": _to_float(tax_raw.get("subtotal") or raw.get("subtotal")) or 0.0,
-        "tax": _to_float(tax_raw.get("tax") or raw.get("tax")) or 0.0,
-        "cgst": _to_float(tax_raw.get("cgst") or raw.get("cgst")) or 0.0,
-        "sgst": _to_float(tax_raw.get("sgst") or raw.get("sgst")) or 0.0,
-        "igst": _to_float(tax_raw.get("igst") or raw.get("igst")) or 0.0,
-        "vat": _to_float(tax_raw.get("vat") or raw.get("vat")) or 0.0,
-        "service_tax": _to_float(
-            tax_raw.get("service_tax")
-            or raw.get("service_tax")
-            or raw.get("serviceCharge")
-        )
-        or 0.0,
-        "cess": _to_float(tax_raw.get("cess") or raw.get("cess")) or 0.0,
-        "tip": _to_float(tax_raw.get("tip") or raw.get("tip")) or 0.0,
-        "discount": _to_float(tax_raw.get("discount") or raw.get("discount")) or 0.0,
-        "total_tax": _to_float(tax_raw.get("total_tax") or raw.get("total_tax")) or 0.0,
-    }
-
-    if normalized["total_tax"] <= 0:
-        normalized["total_tax"] = (
-            normalized["cgst"]
-            + normalized["sgst"]
-            + normalized["igst"]
-            + normalized["vat"]
-            + normalized["service_tax"]
-            + normalized["cess"]
-        )
-
-    if normalized["tax"] <= 0 and normalized["total_tax"] > 0:
-        normalized["tax"] = normalized["total_tax"]
-
-    return {key: round(max(0.0, value), 2) for key, value in normalized.items()}
 
 
 def _normalize_invoice_number(
