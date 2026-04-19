@@ -58,48 +58,65 @@ jobs:
           APP_SMTP_TIMEOUT_SECONDS: ${{ secrets.APP_SMTP_TIMEOUT_SECONDS }}
           APP_SMTP_FROM_EMAIL: ${{ secrets.APP_SMTP_FROM_EMAIL }}
           APP_SMTP_BCC_EMAILS: ${{ secrets.APP_SMTP_BCC_EMAILS }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
-          python - <<'PY'
-          import json
+          python - << 'PY'
           import os
-          from pathlib import Path
+          import sys
+          import yaml
 
-          env_map = {
-              "PROJECT_NAME": os.environ.get("APP_PROJECT_NAME") or "Secure FastAPI",
-              "API_V1_STR": os.environ.get("APP_API_V1_STR") or "/api/v1",
-              "SECRET_KEY": os.environ.get("APP_SECRET_KEY") or "",
-              "ACCESS_TOKEN_EXPIRE_MINUTES": os.environ.get("APP_ACCESS_TOKEN_EXPIRE_MINUTES") or "30",
-              "ALGORITHM": os.environ.get("APP_ALGORITHM") or "HS256",
-              "CORS_ORIGINS": os.environ.get("APP_CORS_ORIGINS") or '["http://localhost:3000","http://localhost:5173","http://127.0.0.1:3000","http://127.0.0.1:5173"]',
-              "MONGODB_URI": os.environ.get("APP_MONGODB_URI") or "mongodb://localhost:27017",
-              "MONGODB_DB": os.environ.get("APP_MONGODB_DB") or "my_finance",
-              "GEMINI_API_KEY": os.environ.get("APP_GEMINI_API_KEY") or "",
-              "GEMINI_MODEL": os.environ.get("APP_GEMINI_MODEL") or "gemini-2.5-flash",
-              "DEFAULT_LOGIN_PASSWORD": os.environ.get("APP_DEFAULT_LOGIN_PASSWORD") or "",
-              "SIGNUP_OTP_EXPIRY_MINUTES": os.environ.get("APP_SIGNUP_OTP_EXPIRY_MINUTES") or "2",
-              "SIGNUP_OTP_LENGTH": os.environ.get("APP_SIGNUP_OTP_LENGTH") or "6",
-              "SMTP_HOST": os.environ.get("APP_SMTP_HOST") or "",
-              "SMTP_PORT": os.environ.get("APP_SMTP_PORT") or "587",
-              "SMTP_USERNAME": os.environ.get("APP_SMTP_USERNAME") or "",
-              "SMTP_PASSWORD": os.environ.get("APP_SMTP_PASSWORD") or "",
-              "SMTP_USE_TLS": os.environ.get("APP_SMTP_USE_TLS") or "true",
-              "SMTP_USE_SSL": os.environ.get("APP_SMTP_USE_SSL") or "false",
-              "SMTP_TIMEOUT_SECONDS": os.environ.get("APP_SMTP_TIMEOUT_SECONDS") or "15",
-              "SMTP_FROM_EMAIL": os.environ.get("APP_SMTP_FROM_EMAIL") or "no-reply@my-finance.local",
-              "SMTP_BCC_EMAILS": os.environ.get("APP_SMTP_BCC_EMAILS") or '["no-reply@harpytechco.in"]',
+          # Validate required secrets are present and meet minimum requirements
+          required = {
+              "APP_SECRET_KEY": os.getenv("APP_SECRET_KEY", ""),
+              "APP_DEFAULT_LOGIN_PASSWORD": os.getenv("APP_DEFAULT_LOGIN_PASSWORD", ""),
+              "APP_MONGODB_URI": os.getenv("APP_MONGODB_URI", ""),
           }
+          missing = [k for k, v in required.items() if not v]
+          if missing:
+              print(f"ERROR: Required secrets are not set: {', '.join(missing)}", file=sys.stderr)
+              sys.exit(1)
+          if len(required["APP_SECRET_KEY"]) < 32:
+              print("ERROR: APP_SECRET_KEY must be at least 32 characters long.", file=sys.stderr)
+              sys.exit(1)
 
-          required_keys = ["SECRET_KEY", "MONGODB_URI", "DEFAULT_LOGIN_PASSWORD"]
-          missing_keys = [key for key in required_keys if not env_map[key]]
-          if missing_keys:
-              raise SystemExit(f"Missing required GitHub secrets: {', '.join(f'APP_{key}' for key in missing_keys)}")
+          data = {}
 
-          lines = []
-          for key, value in env_map.items():
-              encoded = json.dumps(str(value))
-              lines.append(f"{key}: {encoded}")
+          def add_env(yaml_key, env_var):
+              value = os.getenv(env_var)
+              if value:
+                  data[yaml_key] = value
 
-          Path(".cloudrun.env.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          # Add required secrets
+          add_env("SECRET_KEY", "APP_SECRET_KEY")
+          add_env("DEFAULT_LOGIN_PASSWORD", "APP_DEFAULT_LOGIN_PASSWORD")
+          add_env("MONGODB_URI", "APP_MONGODB_URI")
+
+          # Add BUILD_VERSION from GitHub SHA
+          data["BUILD_VERSION"] = os.getenv("GITHUB_SHA", "")
+
+          # Add optional secrets
+          add_env("PROJECT_NAME", "APP_PROJECT_NAME")
+          add_env("API_V1_STR", "APP_API_V1_STR")
+          add_env("ACCESS_TOKEN_EXPIRE_MINUTES", "APP_ACCESS_TOKEN_EXPIRE_MINUTES")
+          add_env("ALGORITHM", "APP_ALGORITHM")
+          add_env("CORS_ORIGINS", "APP_CORS_ORIGINS")
+          add_env("MONGODB_DB", "APP_MONGODB_DB")
+          add_env("GEMINI_API_KEY", "APP_GEMINI_API_KEY")
+          add_env("GEMINI_MODEL", "APP_GEMINI_MODEL")
+          add_env("SIGNUP_OTP_EXPIRY_MINUTES", "APP_SIGNUP_OTP_EXPIRY_MINUTES")
+          add_env("SIGNUP_OTP_LENGTH", "APP_SIGNUP_OTP_LENGTH")
+          add_env("SMTP_HOST", "APP_SMTP_HOST")
+          add_env("SMTP_PORT", "APP_SMTP_PORT")
+          add_env("SMTP_USERNAME", "APP_SMTP_USERNAME")
+          add_env("SMTP_PASSWORD", "APP_SMTP_PASSWORD")
+          add_env("SMTP_USE_TLS", "APP_SMTP_USE_TLS")
+          add_env("SMTP_USE_SSL", "APP_SMTP_USE_SSL")
+          add_env("SMTP_TIMEOUT_SECONDS", "APP_SMTP_TIMEOUT_SECONDS")
+          add_env("SMTP_FROM_EMAIL", "APP_SMTP_FROM_EMAIL")
+          add_env("SMTP_BCC_EMAILS", "APP_SMTP_BCC_EMAILS")
+
+          with open(".cloudrun.env.yaml", "w", encoding="utf-8") as f:
+              yaml.safe_dump(data, f)
           PY
 
       - name: Resolve deploy parameters
