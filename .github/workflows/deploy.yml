@@ -17,6 +17,7 @@ permissions:
 jobs:
   deploy-cloud-run:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'develop' }}
 
     steps:
       - name: Checkout
