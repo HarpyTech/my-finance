@@ -154,8 +154,9 @@ export default function DashboardPage() {
       ) : null}
 
       <header className="dashboard-header">
-        <div>
-          <h1>FinTrackr Dashboard</h1>
+        <div className="dashboard-header-title">
+          <img src="/logo.svg" alt="FinTrackr" className="dashboard-logo" />
+          <h1>Dashboard</h1>
         </div>
         <div className="header-actions">
           <TopNavigation />

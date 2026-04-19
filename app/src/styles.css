@@ -141,6 +141,23 @@ button:disabled {
   padding: 18px;
 }
 
+.dashboard-header-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dashboard-logo {
+  height: 36px;
+  width: auto;
+}
+
+.dashboard-header-title h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--ink);
+}
+
 .header-actions {
   display: flex;
   align-items: center;
