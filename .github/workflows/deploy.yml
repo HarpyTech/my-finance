@@ -192,6 +192,5 @@ jobs:
             --memory 4Gi \
             --cpu-boost \
             --execution-environment gen2 \
-            --update-env-vars "BUILD_VERSION=${{ github.sha }}" \
             --env-vars-file .cloudrun.env.yaml \
             --quiet
