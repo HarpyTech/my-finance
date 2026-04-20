@@ -35,6 +35,60 @@ def _generate_signup_otp() -> str:
     return "".join(random.choices("0123456789", k=digits))
 
 
+def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
+    expiry_minutes = settings.SIGNUP_OTP_EXPIRY_MINUTES
+    return f"""<!doctype html>
+<html>
+<head>
+    <meta charset=\"utf-8\" />
+    <title>Verify your FinTrackr account</title>
+</head>
+<body style=\"margin:0;padding:20px;background:#f6f8fb;\">
+    <table width=\"100%\" role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\">
+        <tr>
+            <td align=\"center\">
+                <table width=\"620\" role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\"
+                             style=\"max-width:620px;background:#fff;border:1px solid #e5e7eb;\">
+                    <tr>
+                        <td style=\"padding:14px 18px;background:#0f172a;color:#fff;\">
+                            <table width=\"100%\" role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\">
+                                <tr>
+                                    <td align=\"left\" style=\"font-weight:700;font-size:14px;\">Branch LOGO</td>
+                                    <td align=\"right\" style=\"font-weight:700;font-size:14px;\">
+                                        FinTrackr Name Logo
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style=\"padding:22px 20px;font:15px/1.5 Arial,Helvetica,sans-serif;\">
+                            <p style=\"margin:0 0 12px 0;\">Hello {recipient},</p>
+                            <p style=\"margin:0 0 12px 0;\">
+                                You received this email because a verification request was made for your
+                                FinTrackr account.
+                            </p>
+                            <p style=\"margin:0 0 8px 0;\"><strong>Your OTP is:</strong></p>
+                            <p style=\"margin:0 0 12px 0;font-size:30px;letter-spacing:4px;color:#1d4ed8;\">
+                                <strong>{otp}</strong>
+                            </p>
+                            <p style=\"margin:0 0 12px 0;\">This OTP expires in {expiry_minutes} minutes.</p>
+                            <p style=\"margin:0 0 16px 0;\">
+                                If you did not initiate this request, please ignore this email.
+                            </p>
+                            <p style=\"margin:0 0 6px 0;\">Thanks &amp; Regards,</p>
+                            <p style=\"margin:0;font-weight:700;\">Support Team</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+"""
+
+
 def _deliver_signup_otp(email: str, otp: str) -> None:
     subject = "Verify your FinTrackr account"
     body = (
@@ -59,6 +113,10 @@ def _deliver_signup_otp(email: str, otp: str) -> None:
     if settings.SMTP_BCC_EMAILS:
         message["Bcc"] = ", ".join(settings.SMTP_BCC_EMAILS)
     message.set_content(body)
+    message.add_alternative(
+        _build_signup_otp_email_html(email, otp),
+        subtype="html",
+    )
 
     try:
         smtp_client = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
