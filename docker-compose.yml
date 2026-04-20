@@ -17,7 +17,7 @@ services:
     
     environment:
       # Application Configuration
-      - PROJECT_NAME=${PROJECT_NAME:-My Finance App}
+      - PROJECT_NAME=${PROJECT_NAME:-FinTrackr}
       - BUILD_VERSION=${BUILD_VERSION:-dev}
       - API_V1_STR=${API_V1_STR:-/api/v1}
       

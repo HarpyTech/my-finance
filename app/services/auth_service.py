@@ -36,9 +36,9 @@ def _generate_signup_otp() -> str:
 
 
 def _deliver_signup_otp(email: str, otp: str) -> None:
-    subject = "Verify your My Finance account"
+    subject = "Verify your FinTrackr account"
     body = (
-        "Your My Finance verification code is: "
+        "Your FinTrackr verification code is: "
         f"{otp}. "
         "This code expires in "
         f"{settings.SIGNUP_OTP_EXPIRY_MINUTES} minutes."

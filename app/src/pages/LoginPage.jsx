@@ -31,6 +31,17 @@ export default function LoginPage() {
   return (
     <main className="auth-layout">
       <section className="auth-card">
+        <div className="auth-brand-block" aria-label="FinTrackr brand">
+          <div className="auth-brand-lockup">
+            <img src="/assets/brand_logo.svg" alt="FinTrackr icon" className="auth-brand-icon" />
+            <img
+              src="/assets/name_logo.svg"
+              alt="FinTrackr"
+              className="auth-brand-wordmark"
+            />
+          </div>
+          <p className="auth-brand-tagline">Track. Grow. Simplify your finances.</p>
+        </div>
         <h1>Welcome back</h1>
         <p>Sign in to track daily expenses and monitor monthly and yearly trends.</p>
         <form onSubmit={handleSubmit} className="stack-form">

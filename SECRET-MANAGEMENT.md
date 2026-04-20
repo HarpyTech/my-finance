@@ -1,6 +1,6 @@
 # Secret Management Guide
 
-This guide explains how to manage secrets and credentials for the My Finance application using various credential managers instead of storing them in `.env` files.
+This guide explains how to manage secrets and credentials for the FinTrackr application using various credential managers instead of storing them in `.env` files.
 
 ## Overview
 
@@ -73,7 +73,7 @@ docker-compose up
 ```bash
 # Set environment variables directly
 export SECRET_KEY="your-secret-key-here"
-export PROJECT_NAME="My Finance App"
+export PROJECT_NAME="FinTrackr"
 export MONGODB_URI="mongodb://localhost:27017"
 
 # Start application
