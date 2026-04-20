@@ -11,10 +11,13 @@ logger = logging.getLogger(__name__)
 PUBLIC_PATHS = {
     "/api/v1/auth/login",
     "/api/v1/auth/register",
+    "/api/v1/auth/register/verify",
+    "/api/v1/auth/register/resend-otp",
     "/api/v1/auth/logout",
     "/api/v1/auth/csrf",
     "/api/v1/health",
     "/api/v1/health/build",
+    "/api/v1/auth/test-email",
     "/health",
     "/",
     "/docs",
@@ -49,7 +52,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if self._is_public_path(request.url.path):
                 return await call_next(request)
 
-            # Try to extract token from cookie first, then from Authorization header
+            # Try to extract token from cookie first,
+            # then from Authorization header.
             token = self._extract_token(request)
 
             if not token:

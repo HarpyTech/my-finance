@@ -29,13 +29,24 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
-    DEFAULT_LOGIN_PASSWORD: str
-
     MONGODB_URI: str = "mongodb://localhost:27017"
     MONGODB_DB: str = "my_finance"
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
     BUILD_VERSION: str = "dev"
+
+    SIGNUP_OTP_EXPIRY_MINUTES: int = 2
+    SIGNUP_OTP_LENGTH: int = 6
+
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
+    SMTP_TIMEOUT_SECONDS: int = 15
+    SMTP_FROM_EMAIL: str = "no-reply@my-finance.local"
+    SMTP_BCC_EMAILS: list[str] = ["no-reply@harpytechco.in"]
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -58,6 +69,33 @@ class Settings(BaseSettings):
             ]
 
         return [origin.strip() for origin in normalized.split(",") if origin.strip()]
+
+    @field_validator("SMTP_BCC_EMAILS", mode="before")
+    @classmethod
+    def parse_smtp_bcc_emails(cls, value: Any) -> Any:
+        if value is None:
+            return []
+
+        if not isinstance(value, str):
+            return value
+
+        normalized = value.strip()
+        if not normalized:
+            return []
+
+        if normalized.startswith("["):
+            parsed = json.loads(normalized)
+            if not isinstance(parsed, list):
+                raise ValueError(
+                    "SMTP_BCC_EMAILS JSON value must be " "a list of email addresses"
+                )
+            return [
+                email.strip()
+                for email in parsed
+                if isinstance(email, str) and email.strip()
+            ]
+
+        return [email.strip() for email in normalized.split(",") if email.strip()]
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

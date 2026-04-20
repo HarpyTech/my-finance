@@ -6,9 +6,18 @@ import logging
 from app.db.mongo import (
     get_expense_line_items_collection,
     get_expenses_collection,
+    get_users_collection,
 )
 
 logger = logging.getLogger(__name__)
+
+SESSION_EXPENSE_LIMIT = 10
+
+
+class SessionExpenseLimitError(Exception):
+    """Raised when a user exceeds their per-session expense limit."""
+
+    pass
 
 
 def _as_mongo_datetime(value: date) -> datetime:
@@ -26,7 +35,7 @@ def add_expense(
     vendor: str,
     description: str,
     expense_date: date,
-    tax_details: dict | None = None,
+    llm_model: str | None = None,
     line_items: list[dict] | None = None,
 ):
     """Add a new expense for a user"""
@@ -38,12 +47,12 @@ def add_expense(
         expenses = get_expenses_collection()
         expense_line_items = get_expense_line_items_collection()
 
-        normalized_tax = _normalize_tax_details(tax_details)
         normalized_items = line_items or []
         normalized_invoice_number = _normalize_invoice_number(
             invoice_number,
             description,
         )
+        normalized_llm_model = (llm_model or "").strip() or None
 
         doc = {
             "username": username,
@@ -55,8 +64,9 @@ def add_expense(
             "vendor": vendor.strip(),
             "description": description.strip(),
             "expense_date": _as_mongo_datetime(expense_date),
-            "tax_details": normalized_tax,
+            "llm_model": normalized_llm_model,
             "line_items_count": len(normalized_items),
+            "created_at": datetime.now(timezone.utc),
         }
         result = expenses.insert_one(doc)
 
@@ -89,7 +99,7 @@ def add_expense(
             "vendor": doc["vendor"],
             "description": doc["description"],
             "expense_date": expense_date.isoformat(),
-            "tax_details": doc["tax_details"],
+            "llm_model": doc["llm_model"],
             "line_items": normalized_items,
         }
     except PyMongoError as exc:
@@ -162,7 +172,7 @@ def list_expenses(username: str):
                 "vendor": doc.get("vendor", ""),
                 "description": doc.get("description", ""),
                 "expense_date": doc["expense_date"].isoformat(),
-                "tax_details": _normalize_tax_details(doc.get("tax_details")),
+                "llm_model": doc.get("llm_model"),
                 "line_items": line_items_map.get(str(doc["_id"]), []),
             }
             for doc in docs
@@ -186,39 +196,101 @@ def list_expenses(username: str):
         raise
 
 
-def _normalize_tax_details(raw_tax_details: dict | None) -> dict:
-    """Ensure all tax attributes are stored as explicit numeric fields."""
-    raw = raw_tax_details or {}
-    normalized = {
-        "subtotal": _float_or_zero(raw.get("subtotal")),
-        "tax": _float_or_zero(raw.get("tax")),
-        "cgst": _float_or_zero(raw.get("cgst")),
-        "sgst": _float_or_zero(raw.get("sgst")),
-        "igst": _float_or_zero(raw.get("igst")),
-        "vat": _float_or_zero(raw.get("vat")),
-        "service_tax": _float_or_zero(raw.get("service_tax")),
-        "cess": _float_or_zero(raw.get("cess")),
-        "tip": _float_or_zero(raw.get("tip")),
-        "discount": _float_or_zero(raw.get("discount")),
-        "total_tax": _float_or_zero(raw.get("total_tax")),
-    }
+def check_session_expense_limit(username: str) -> None:
+    """Raise SessionExpenseLimitError if the overall expense limit is hit."""
+    try:
+        disable_rate_limit, effective_limit = _get_user_rate_limit_config(
+            username,
+        )
+        if disable_rate_limit:
+            return
 
-    computed_total_tax = (
-        normalized["cgst"]
-        + normalized["sgst"]
-        + normalized["igst"]
-        + normalized["vat"]
-        + normalized["service_tax"]
-        + normalized["cess"]
+        expenses = get_expenses_collection()
+        count = expenses.count_documents({"username": username})
+
+        if count >= effective_limit:
+            logger.warning(
+                "Expense limit reached for user %s: %d/%d",
+                username,
+                count,
+                effective_limit,
+            )
+            raise SessionExpenseLimitError(
+                f"You have reached the maximum of "
+                f"{effective_limit} expenses. "
+                "Please contact our customer team to continue."
+            )
+    except SessionExpenseLimitError:
+        raise
+    except PyMongoError as exc:
+        logger.error(
+            "Database error while checking session expense limit: %s",
+            str(exc),
+            exc_info=True,
+        )
+        raise RuntimeError(
+            "Failed to check expense limit due to database error"
+        ) from exc
+
+
+def get_expense_limit_status(username: str) -> dict:
+    """Return expense limit status for the given user."""
+    try:
+        disable_rate_limit, effective_limit = _get_user_rate_limit_config(
+            username,
+        )
+        expenses = get_expenses_collection()
+        count = expenses.count_documents({"username": username})
+        reached = (not disable_rate_limit) and count >= effective_limit
+        remaining = None if disable_rate_limit else max(effective_limit - count, 0)
+        return {
+            "limit": effective_limit,
+            "count": count,
+            "remaining": remaining,
+            "reached": reached,
+            "disable_rate_limit": disable_rate_limit,
+        }
+    except PyMongoError as exc:
+        logger.error(
+            "Database error while fetching expense limit status: %s",
+            str(exc),
+            exc_info=True,
+        )
+        raise RuntimeError(
+            "Failed to fetch expense limit status due to database error"
+        ) from exc
+
+
+def _get_user_rate_limit_config(username: str) -> tuple[bool, int]:
+    """Return per-user rate limit config with fallback defaults."""
+    users = get_users_collection()
+    user = users.find_one(
+        {"username": username},
+        {"disable_rate_limit": 1, "expense_limit": 1},
     )
+    if not user:
+        return False, SESSION_EXPENSE_LIMIT
 
-    if normalized["total_tax"] <= 0 and computed_total_tax > 0:
-        normalized["total_tax"] = round(computed_total_tax, 2)
+    default_patch: dict[str, bool | int] = {}
+    if "disable_rate_limit" not in user:
+        default_patch["disable_rate_limit"] = False
+    if "expense_limit" not in user:
+        default_patch["expense_limit"] = SESSION_EXPENSE_LIMIT
+    if default_patch:
+        users.update_one({"_id": user["_id"]}, {"$set": default_patch})
 
-    if normalized["tax"] <= 0 and normalized["total_tax"] > 0:
-        normalized["tax"] = normalized["total_tax"]
+    disable_rate_limit = bool(user.get("disable_rate_limit", False))
 
-    return {key: round(value, 2) for key, value in normalized.items()}
+    raw_limit = user.get("expense_limit", SESSION_EXPENSE_LIMIT)
+    try:
+        expense_limit = int(raw_limit)
+    except (TypeError, ValueError):
+        expense_limit = SESSION_EXPENSE_LIMIT
+
+    if expense_limit <= 0:
+        expense_limit = SESSION_EXPENSE_LIMIT
+
+    return disable_rate_limit, expense_limit
 
 
 def _normalize_invoice_number(
@@ -261,13 +333,6 @@ def _extract_invoice_number_from_text(text: str) -> str:
             return candidate
 
     return ""
-
-
-def _float_or_zero(value) -> float:
-    try:
-        return max(0.0, float(value or 0))
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def monthly_summary(username: str, year: int):

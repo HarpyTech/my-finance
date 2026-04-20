@@ -10,15 +10,19 @@ from fastapi import (
     status,
 )
 import logging
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_user
 from app.models.expense import ExpenseCreate, ExpenseInputType
 from app.services.expense_service import (
     add_expense,
     category_summary,
+    check_session_expense_limit,
+    get_expense_limit_status,
     list_expenses,
     monthly_summary,
     yearly_summary,
+    SessionExpenseLimitError,
 )
 from app.services.expense_extraction_service import extract_expense_payload
 
@@ -34,6 +38,7 @@ def create_expense(
     """Create a new expense"""
     logger.info("Create expense request received")
     try:
+        check_session_expense_limit(user)
         result = add_expense(
             username=user,
             amount=payload.amount,
@@ -44,11 +49,16 @@ def create_expense(
             vendor=payload.vendor,
             description=payload.description,
             expense_date=payload.expense_date,
-            tax_details=payload.tax_details.model_dump(),
             line_items=[item.model_dump() for item in payload.line_items],
         )
         logger.info("Expense created successfully")
         return result
+    except SessionExpenseLimitError as exc:
+        logger.warning(f"Session expense limit reached for user {user}: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
     except RuntimeError as exc:
         logger.error(f"Service error creating expense: {str(exc)}")
         raise HTTPException(
@@ -63,9 +73,6 @@ def create_expense(
         raise
 
 
-_MAX_IMAGE_BYTES = 6 * 1024 * 1024  # 6 MB
-
-
 @router.post("/extract-and-create", status_code=201)
 async def extract_and_create_expense(
     text_input: str | None = Form(default=None),
@@ -76,34 +83,34 @@ async def extract_and_create_expense(
     """Extract expense details with Gemini and insert into DB."""
     logger.info("Extract-and-create expense request received")
     try:
-        image_bytes: bytes | None = None
+        # Enforce limit before reading image bytes or calling Gemini.
+        check_session_expense_limit(user)
+        raw_image_bytes: bytes | None = None
         if image is not None:
-            image_bytes = await image.read(_MAX_IMAGE_BYTES + 1)
-            if len(image_bytes) > _MAX_IMAGE_BYTES:
-                raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Image exceeds the {_MAX_IMAGE_BYTES // (1024 * 1024)} MB limit",
-                )
+            # Keep upload untouched: read and forward original bytes as-is.
+            raw_image_bytes = await image.read()
 
         mime_type = image.content_type if image else None
-        extracted = extract_expense_payload(
+        extracted, used_llm_model = await run_in_threadpool(
+            extract_expense_payload,
             text_input=text_input,
-            image_bytes=image_bytes,
+            image_bytes=raw_image_bytes,
             image_mime_type=mime_type,
         )
-        del image_bytes  # free original bytes early to reduce peak memory
+        del raw_image_bytes  # free original bytes early to reduce peak memory
 
-        result = add_expense(
+        result = await run_in_threadpool(
+            add_expense,
             username=user,
             amount=extracted["amount"],
             category=extracted["category"],
             bill_type=extracted["bill_type"],
-            input_type=input_type or _infer_input_type(text_input, image is not None),
+            input_type=(input_type or _infer_input_type(text_input, image is not None)),
             invoice_number=extracted["invoice_number"],
             vendor=extracted["vendor"],
             description=extracted["description"],
             expense_date=date.fromisoformat(extracted["expense_date"]),
-            tax_details=extracted["tax_details"],
+            llm_model=used_llm_model,
             line_items=extracted["line_items"],
         )
 
@@ -111,11 +118,18 @@ async def extract_and_create_expense(
         return {
             "expense": result,
             "extracted": extracted,
+            "llm_model": used_llm_model,
         }
     except ValueError as exc:
         logger.warning(f"Invalid extract-and-create request: {str(exc)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except SessionExpenseLimitError as exc:
+        logger.warning(f"Session expense limit reached for user {user}: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=str(exc),
         ) from exc
     except RuntimeError as exc:
@@ -163,6 +177,37 @@ def get_expenses(user: str = Depends(get_current_user)):
     except Exception as exc:
         logger.error(
             f"Unexpected error fetching expenses: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+@router.get("/limit-status")
+def get_expense_limit_status_route(user: str = Depends(get_current_user)):
+    """Get expense-limit status for the current user."""
+    logger.info("Expense limit status request received")
+    try:
+        result = get_expense_limit_status(user)
+        logger.info(
+            "Expense limit status retrieved for user %s: %d/%d",
+            user,
+            result["count"],
+            result["limit"],
+        )
+        return result
+    except RuntimeError as exc:
+        logger.error(
+            "Service error fetching expense limit status: %s",
+            str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            "Unexpected error fetching expense limit status: %s",
+            str(exc),
             exc_info=True,
         )
         raise

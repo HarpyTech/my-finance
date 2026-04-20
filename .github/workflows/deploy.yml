@@ -1,9 +1,10 @@
-﻿name: Deploy to Cloud Run (develop)
+name: Deploy to Cloud Run
 
 on:
   push:
     branches:
       - develop
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -16,6 +17,7 @@ permissions:
 jobs:
   deploy-cloud-run:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'develop' }}
 
     steps:
       - name: Checkout
@@ -34,17 +36,28 @@ jobs:
       - name: Build Cloud Run env file
         shell: bash
         env:
-        #   APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
-        #   APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
+          APP_PROJECT_NAME: ${{ secrets.APP_PROJECT_NAME }}
+          APP_API_V1_STR: ${{ secrets.APP_API_V1_STR }}
           APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
           APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${{ secrets.APP_ACCESS_TOKEN_EXPIRE_MINUTES }}
-        #   APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
-        #   APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
-          APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
+          APP_ALGORITHM: ${{ secrets.APP_ALGORITHM }}
+          APP_CORS_ORIGINS: ${{ secrets.APP_CORS_ORIGINS }}
           APP_MONGODB_URI: ${{ secrets.APP_MONGODB_URI }}
           APP_MONGODB_DB: ${{ secrets.APP_MONGODB_DB }}
           APP_GEMINI_API_KEY: ${{ secrets.APP_GEMINI_API_KEY }}
           APP_GEMINI_MODEL: ${{ secrets.APP_GEMINI_MODEL }}
+          APP_DEFAULT_LOGIN_PASSWORD: ${{ secrets.APP_DEFAULT_LOGIN_PASSWORD }}
+          APP_SIGNUP_OTP_EXPIRY_MINUTES: ${{ secrets.APP_SIGNUP_OTP_EXPIRY_MINUTES }}
+          APP_SIGNUP_OTP_LENGTH: ${{ secrets.APP_SIGNUP_OTP_LENGTH }}
+          APP_SMTP_HOST: ${{ secrets.APP_SMTP_HOST }}
+          APP_SMTP_PORT: ${{ secrets.APP_SMTP_PORT }}
+          APP_SMTP_USERNAME: ${{ secrets.APP_SMTP_USERNAME }}
+          APP_SMTP_PASSWORD: ${{ secrets.APP_SMTP_PASSWORD }}
+          APP_SMTP_USE_TLS: ${{ secrets.APP_SMTP_USE_TLS }}
+          APP_SMTP_USE_SSL: ${{ secrets.APP_SMTP_USE_SSL }}
+          APP_SMTP_TIMEOUT_SECONDS: ${{ secrets.APP_SMTP_TIMEOUT_SECONDS }}
+          APP_SMTP_FROM_EMAIL: ${{ secrets.APP_SMTP_FROM_EMAIL }}
+          APP_SMTP_BCC_EMAILS: ${{ secrets.APP_SMTP_BCC_EMAILS }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
           python - << 'PY'
@@ -73,10 +86,15 @@ jobs:
               if value:
                   data[yaml_key] = value
 
+          # Add required secrets
           add_env("SECRET_KEY", "APP_SECRET_KEY")
           add_env("DEFAULT_LOGIN_PASSWORD", "APP_DEFAULT_LOGIN_PASSWORD")
           add_env("MONGODB_URI", "APP_MONGODB_URI")
+
+          # Add BUILD_VERSION from GitHub SHA
           data["BUILD_VERSION"] = os.getenv("GITHUB_SHA", "")
+
+          # Add optional secrets
           add_env("PROJECT_NAME", "APP_PROJECT_NAME")
           add_env("API_V1_STR", "APP_API_V1_STR")
           add_env("ACCESS_TOKEN_EXPIRE_MINUTES", "APP_ACCESS_TOKEN_EXPIRE_MINUTES")
@@ -85,6 +103,17 @@ jobs:
           add_env("MONGODB_DB", "APP_MONGODB_DB")
           add_env("GEMINI_API_KEY", "APP_GEMINI_API_KEY")
           add_env("GEMINI_MODEL", "APP_GEMINI_MODEL")
+          add_env("SIGNUP_OTP_EXPIRY_MINUTES", "APP_SIGNUP_OTP_EXPIRY_MINUTES")
+          add_env("SIGNUP_OTP_LENGTH", "APP_SIGNUP_OTP_LENGTH")
+          add_env("SMTP_HOST", "APP_SMTP_HOST")
+          add_env("SMTP_PORT", "APP_SMTP_PORT")
+          add_env("SMTP_USERNAME", "APP_SMTP_USERNAME")
+          add_env("SMTP_PASSWORD", "APP_SMTP_PASSWORD")
+          add_env("SMTP_USE_TLS", "APP_SMTP_USE_TLS")
+          add_env("SMTP_USE_SSL", "APP_SMTP_USE_SSL")
+          add_env("SMTP_TIMEOUT_SECONDS", "APP_SMTP_TIMEOUT_SECONDS")
+          add_env("SMTP_FROM_EMAIL", "APP_SMTP_FROM_EMAIL")
+          add_env("SMTP_BCC_EMAILS", "APP_SMTP_BCC_EMAILS")
 
           with open(".cloudrun.env.yaml", "w", encoding="utf-8") as f:
               yaml.safe_dump(data, f)
@@ -93,20 +122,32 @@ jobs:
       - name: Resolve deploy parameters
         shell: bash
         run: |
+          # Determine environment suffix from branch name
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "${BRANCH}" = "main" ]; then
+            ENV="prod"
+            DEFAULT_REGION="us-central1"
+          else
+            ENV="dev"
+            DEFAULT_REGION="us-east1"
+          fi
+
           REGION="${{ secrets.GCP_REGION }}"
           if [ -z "${REGION}" ]; then
-            REGION="us-east1"
-          fi
-          SERVICE_NAME="${{ secrets.CLOUD_RUN_SERVICE }}"
-          if [ -z "${SERVICE_NAME}" ]; then
-            SERVICE_NAME="finance-dev"
-          elif [[ "${SERVICE_NAME}" != *-dev ]]; then
-            SERVICE_NAME="${SERVICE_NAME}-dev"
+            REGION="${DEFAULT_REGION}"
           fi
 
-          # Use the service name as Artifact Registry repository name to avoid extra secrets.
+          BASE_SERVICE="${{ secrets.CLOUD_RUN_SERVICE }}"
+          if [ -z "${BASE_SERVICE}" ]; then
+            BASE_SERVICE="finance"
+          fi
+
+          # Strip any existing env suffix then re-apply the correct one
+          BASE_SERVICE="${BASE_SERVICE%-dev}"
+          BASE_SERVICE="${BASE_SERVICE%-prod}"
+          SERVICE_NAME="${BASE_SERVICE}-${ENV}"
+
           AR_REPOSITORY="${SERVICE_NAME}"
-
           AR_HOST="${REGION}-docker.pkg.dev"
           IMAGE_URI="${AR_HOST}/${{ secrets.GCP_PROJECT_ID }}/${AR_REPOSITORY}/${SERVICE_NAME}:${{ github.sha }}"
 
@@ -147,6 +188,9 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --port 8000 \
-            --memory 2Gi \
+            --cpu 2 \
+            --memory 4Gi \
+            --cpu-boost \
+            --execution-environment gen2 \
             --env-vars-file .cloudrun.env.yaml \
             --quiet

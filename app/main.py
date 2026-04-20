@@ -111,12 +111,24 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 INDEX_FILE = STATIC_DIR / "index.html"
 ASSETS_DIR = STATIC_DIR / "assets"
+FAVICON_FILE = STATIC_DIR / "favicon.ico"
+PUBLIC_FAVICON_FILE = BASE_DIR / "public" / "favicon.ico"
 
 if ASSETS_DIR.exists():
     app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
     logger.info(f"Static assets mounted from {ASSETS_DIR}")
 else:
     logger.warning(f"Static assets directory not found: {ASSETS_DIR}")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    """Serve favicon from build output, or fallback to source public folder."""
+    if FAVICON_FILE.exists():
+        return FileResponse(FAVICON_FILE)
+    if PUBLIC_FAVICON_FILE.exists():
+        return FileResponse(PUBLIC_FAVICON_FILE)
+    raise HTTPException(status_code=404, detail="Favicon not found")
 
 
 @app.get("/{full_path:path}")

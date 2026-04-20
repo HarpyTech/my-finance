@@ -3,6 +3,7 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
 COPY package.json vite.config.js ./
 COPY app/index.html ./app/index.html
+COPY app/public ./app/public
 COPY app/src ./app/src
 RUN npm install
 RUN npm run build

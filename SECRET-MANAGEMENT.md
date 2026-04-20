@@ -1,6 +1,6 @@
 # Secret Management Guide
 
-This guide explains how to manage secrets and credentials for the My Finance application using various credential managers instead of storing them in `.env` files.
+This guide explains how to manage secrets and credentials for the FinTrackr application using various credential managers instead of storing them in `.env` files.
 
 ## Overview
 
@@ -34,7 +34,6 @@ Install-Module -Name CredentialManager -Force
 
 # Store secrets
 New-StoredCredential -Target 'MyFinanceApp-SecretKey' -UserName 'app' -Password 'your-secret-key-here' -Persist LocalMachine
-New-StoredCredential -Target 'MyFinanceApp-DefaultPassword' -UserName 'app' -Password 'your-password-here' -Persist LocalMachine
 
 # Load secrets and start application
 . .\load-secrets.ps1
@@ -46,7 +45,6 @@ docker-compose up
 ```bash
 # Store secrets in macOS Keychain
 security add-generic-password -s 'MyFinanceApp' -a 'SecretKey' -w 'your-secret-key-here'
-security add-generic-password -s 'MyFinanceApp' -a 'DefaultPassword' -w 'your-password-here'
 
 # Load secrets and start application
 source ./load-secrets.sh
@@ -65,9 +63,6 @@ sudo apt-get install libsecret-tools  # Debian/Ubuntu
 secret-tool store --label='MyFinanceApp Secret Key' service MyFinanceApp account SecretKey
 # Enter your secret when prompted
 
-secret-tool store --label='MyFinanceApp Default Password' service MyFinanceApp account DefaultPassword
-# Enter your password when prompted
-
 # Load secrets and start application
 source ./load-secrets.sh
 docker-compose up
@@ -78,8 +73,7 @@ docker-compose up
 ```bash
 # Set environment variables directly
 export SECRET_KEY="your-secret-key-here"
-export DEFAULT_LOGIN_PASSWORD="your-password-here"
-export PROJECT_NAME="My Finance App"
+export PROJECT_NAME="FinTrackr"
 export MONGODB_URI="mongodb://localhost:27017"
 
 # Start application
@@ -93,7 +87,6 @@ For production deployments with Docker Swarm:
 ```bash
 # Create secrets
 echo "your-secret-key" | docker secret create secret_key -
-echo "your-password" | docker secret create default_password -
 
 # Uncomment the secrets section in docker-compose.yml
 # Then deploy with:
@@ -121,8 +114,9 @@ Example environment variable with fallback:
 - ❌ Never commit `.env` to version control
 
 ### CI/CD
-- ✅ Use GitHub Secrets, GitLab CI/CD variables, or Azure DevOps Secure Files
-- ✅ Inject as environment variables during build/deploy
+- ✅ Use GitHub secrets only for deployment-scoped values such as cloud credentials, project IDs, regions, and service names
+- ✅ Store application runtime values in a managed secret store such as Google Secret Manager
+- ✅ Bind secrets directly to the runtime platform during deploy instead of writing them into generated env files
 - ❌ Never log secret values
 
 ### Production
@@ -132,19 +126,87 @@ Example environment variable with fallback:
 - ✅ Rotate secrets regularly
 - ❌ Never use default values in production
 
-## Required Environment Variables
+## Google Cloud Run + Secret Manager
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `SECRET_KEY` | Yes | ⚠️ Change in prod | JWT signing key (min 32 chars) |
-| `DEFAULT_LOGIN_PASSWORD` | Yes | `ChangeMe123!` | Default password for initial users |
-| `PROJECT_NAME` | No | `My Finance App` | Application name |
-| `BUILD_VERSION` | No | `dev` | Build/deployment version |
-| `API_V1_STR` | No | `/api/v1` | API prefix |
-| `ALGORITHM` | No | `HS256` | JWT algorithm |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `30` | Token expiration time |
-| `MONGODB_URI` | No | `mongodb://localhost:27017` | MongoDB connection string |
-| `MONGODB_DB` | No | `my_finance` | Database name |
+For GitHub Actions deployments to Cloud Run, keep only deployment configuration in GitHub secrets and store all application runtime values in Google Secret Manager.
+
+Recommended GitHub secrets:
+- `GCP_SA_KEY`
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `CLOUD_RUN_SERVICE`
+
+Recommended Secret Manager secret names:
+- `SECRET_KEY`
+- `DEFAULT_LOGIN_PASSWORD`
+- `MONGODB_URI`
+- `MONGODB_DB`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_USE_TLS`
+- `SMTP_USE_SSL`
+- `SMTP_TIMEOUT_SECONDS`
+- `SMTP_FROM_EMAIL`
+- `SMTP_BCC_EMAILS`
+- `PROJECT_NAME`
+- `API_V1_STR`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `ALGORITHM`
+- `CORS_ORIGINS`
+- `SIGNUP_OTP_EXPIRY_MINUTES`
+- `SIGNUP_OTP_LENGTH`
+
+Cloud Run injects those secrets as environment variables, which the application already reads through `app/core/config.py`.
+
+## Environment Variables Reference
+
+All variables are read from the environment or a `.env` file at startup by `app/core/config.py`.
+
+### 🔴 Critical — must be set in every environment
+
+| Variable | Default | Importance | Description |
+|----------|---------|------------|-------------|
+| `SECRET_KEY` | *(none — required)* | **Critical** | JWT signing key. Use a random 32+ character string. Leaking this allows forging auth tokens for any account. |
+
+### 🟠 High — strongly recommended for production
+
+| Variable | Default | Importance | Description |
+|----------|---------|------------|-------------|
+| `MONGODB_URI` | `mongodb://localhost:27017` | **High** | Full MongoDB connection string including auth credentials. Must be set to a secured URI in production. |
+| `MONGODB_DB` | `my_finance` | **High** | Database name used by the application. Changing this in production without migration will lose all data. |
+| `GEMINI_API_KEY` | *(none — optional)* | **High** | Google Gemini API key. Required to enable AI receipt extraction. Without it the extract-and-create endpoint is disabled. Keep secret — billing is tied to this key. |
+| `SMTP_HOST` | *(none — optional)* | **High** | SMTP server hostname. Without it OTP verification emails fall back to log-only mode (development). Required for user registration to work end-to-end. |
+| `SMTP_USERNAME` | *(none — optional)* | **High** | SMTP login username. Required when the mail server enforces authentication. |
+| `SMTP_PASSWORD` | *(none — optional)* | **High** | SMTP login password. Required when the mail server enforces authentication. Keep secret. |
+| `CORS_ORIGINS` | `http://localhost:3000, http://localhost:5173` | **High** | Comma-separated or JSON-array list of allowed CORS origins. Must be set to the real frontend URL(s) in production to prevent cross-origin abuse. |
+
+### 🟡 Medium — tune for your deployment
+
+| Variable | Default | Importance | Description |
+|----------|---------|------------|-------------|
+| `SMTP_FROM_EMAIL` | `no-reply@my-finance.local` | **Medium** | `From:` address on all outbound emails. Set to a real domain address so emails are not rejected as spam. |
+| `SMTP_BCC_EMAILS` | `no-reply@harpytechco.in` | **Medium** | Comma-separated or JSON-array list of addresses to blind-copy on every outbound email (audit / ops trail). Set to `""` to disable. |
+| `SMTP_PORT` | `587` | **Medium** | SMTP server port. Common values: `587` (STARTTLS), `465` (SSL), `25` (plain — avoid in production). |
+| `SMTP_USE_TLS` | `true` | **Medium** | Enable STARTTLS upgrade after connecting. Set to `false` only when `SMTP_USE_SSL=true` or on a trusted internal relay. |
+| `SMTP_USE_SSL` | `false` | **Medium** | Use SMTP over SSL (port 465). Set to `true` when your mail provider requires an SSL-only connection. |
+| `SMTP_TIMEOUT_SECONDS` | `15` | **Medium** | Seconds before an SMTP connection attempt is aborted. Increase on slow networks; decrease for faster failure detection. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | **Medium** | JWT access-token lifetime in minutes. Shorter values reduce the window of a stolen token but require more frequent re-login. |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | **Medium** | Gemini model used for receipt extraction. Currently locked to `gemini-2.5-flash`; changing this requires a code update in `expense_extraction_service.py`. |
+
+### 🟢 Low — informational / rarely changed
+
+| Variable | Default | Importance | Description |
+|----------|---------|------------|-------------|
+| `PROJECT_NAME` | `Secure FastAPI` | **Low** | Application display name logged at startup. No functional effect. |
+| `BUILD_VERSION` | `dev` | **Low** | Build or release version string exposed via the health endpoint. Set by CI/CD pipelines. |
+| `API_V1_STR` | `/api/v1` | **Low** | URL prefix for all API routes. Changing this requires matching updates to frontend API calls and the ingress config. |
+| `ALGORITHM` | `HS256` | **Low** | JWT signing algorithm. Only change if your security policy mandates RS256/ES256 (requires keypair setup). |
+| `SIGNUP_OTP_EXPIRY_MINUTES` | `2` | **Low** | How long a registration OTP remains valid. Short window reduces brute-force exposure. |
+| `SIGNUP_OTP_LENGTH` | `6` | **Low** | Number of digits in a registration OTP (4–8). Higher values are harder to guess but less convenient. |
 
 ## Troubleshooting
 
@@ -154,11 +216,9 @@ Check that required variables are set:
 ```bash
 # Windows
 $env:SECRET_KEY
-$env:DEFAULT_LOGIN_PASSWORD
 
 # Linux/macOS
 echo $SECRET_KEY
-echo $DEFAULT_LOGIN_PASSWORD
 ```
 
 ### Docker Compose can't find variables

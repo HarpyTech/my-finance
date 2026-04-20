@@ -1,4 +1,4 @@
-# My Finance
+# FinTrackr
 
 A personal finance management web app to track income, expenses, budgets and visualize financial health.
 
@@ -167,47 +167,76 @@ See [SECRET-MANAGEMENT.md](./SECRET-MANAGEMENT.md) for comprehensive setup instr
 
 ## ☁️ Auto Deploy to Google Cloud Run (GitHub Actions)
 
-This repository includes a workflow at `.github/workflows/deploy-cloud-run.yml`.
+This repository includes branch-specific Cloud Run workflows:
 
-It deploys automatically when code is pushed to `main` (and can also be run manually with `workflow_dispatch`).
+- `.github/workflows/dev_deploy.yml` deploys pushes from `develop`
+- `.github/workflows/prod_deploy.yml` deploys pushes from `main`
 
 Deployment flow:
 1. Build Docker image
 2. Push image to Artifact Registry
 3. Deploy image to Cloud Run
+4. Bind runtime environment variables from Google Secret Manager
 
 ### 1) Add Required GitHub Secrets
 
 Add these in GitHub: **Settings -> Secrets and variables -> Actions -> Secrets**.
 
-**Authentication Secret**
+**Deployment Secrets**
 - `GCP_SA_KEY` = full JSON of your GCP service account key
-
-**Infrastructure Secrets**
 - `GCP_PROJECT_ID` = your Google Cloud project ID
-- `GCP_REGION` = Cloud Run region (optional, default: `asia-south1`)
-- `CLOUD_RUN_SERVICE` = Cloud Run service name (optional, default: `finance-prod`)
-- `GCP_ARTIFACT_REGISTRY_REPOSITORY` = Artifact Registry repo name (optional, default: `finance-prod`)
+- `GCP_REGION` = Cloud Run region (optional)
+- `CLOUD_RUN_SERVICE` = base Cloud Run service name, for example `finance` (the workflows append `-dev` and `-prod` when needed)
 
-**Application Runtime Secrets**
-- `APP_SECRET_KEY` = JWT secret key (minimum 32 characters)
-- `APP_DEFAULT_LOGIN_PASSWORD` = initial/default login password
-- `APP_MONGODB_URI` = MongoDB connection string
+Only deployment-scoped values should live in GitHub secrets.
 
-### 2) Optional GitHub Secrets (App Overrides)
+### 2) Add Application Runtime Values To Secret Manager
 
-If omitted, app defaults are used where defaults exist.
+The workflows no longer read application runtime values from GitHub secrets. Cloud Run now binds these directly from Google Secret Manager using the same names as the application environment variables.
 
-- `APP_PROJECT_NAME`
-- `APP_API_V1_STR`
-- `APP_ACCESS_TOKEN_EXPIRE_MINUTES`
-- `APP_ALGORITHM`
-- `APP_MONGODB_DB`
-- `APP_CORS_ORIGINS` (must be JSON array string, example: `["https://your-frontend-domain.com"]`)
+**Required Secret Manager secrets**
+- `SECRET_KEY`
+- `DEFAULT_LOGIN_PASSWORD`
+- `MONGODB_URI`
 
-### 3) Push to `main`
+**Optional Secret Manager secrets**
+- `PROJECT_NAME`
+- `API_V1_STR`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `ALGORITHM`
+- `CORS_ORIGINS`
+- `MONGODB_DB`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_USE_TLS`
+- `SMTP_USE_SSL`
+- `SMTP_TIMEOUT_SECONDS`
+- `SMTP_FROM_EMAIL`
+- `SMTP_BCC_EMAILS`
+- `SIGNUP_OTP_EXPIRY_MINUTES`
+- `SIGNUP_OTP_LENGTH`
 
-After setting the secrets, push to `main` and the workflow will build and deploy to Cloud Run.
+Example:
+
+```bash
+echo -n "mongodb+srv://user:pass@cluster.example.mongodb.net/" | gcloud secrets create MONGODB_URI --data-file=-
+echo -n "replace-with-a-long-random-secret" | gcloud secrets create SECRET_KEY --data-file=-
+echo -n "replace-default-password" | gcloud secrets create DEFAULT_LOGIN_PASSWORD --data-file=-
+```
+
+If a secret already exists, add a new version instead:
+
+```bash
+echo -n "new-value" | gcloud secrets versions add SECRET_KEY --data-file=-
+```
+
+### 3) Push to `develop` or `main`
+
+After the deployment secrets and Secret Manager entries are set, push to `develop` or `main` and the matching workflow will build and deploy to Cloud Run.
 
 ---
 

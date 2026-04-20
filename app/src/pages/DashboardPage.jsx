@@ -16,6 +16,23 @@ import { useAuth } from '../auth/AuthContext';
 import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
+const LLM_OPTIONS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
+  'gemini-3-flash-preview',
+  'gemini-3.1-pro-preview',
+];
+
+const inrCurrencyFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 2,
+});
+
+function formatInr(value) {
+  return inrCurrencyFormatter.format(Number(value || 0));
+}
+
 export default function DashboardPage() {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
@@ -28,8 +45,10 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [cameraImageFile, setCameraImageFile] = useState(null);
   const [cameraPreviewUrl, setCameraPreviewUrl] = useState('');
+  const [selectedLlmModel, setSelectedLlmModel] = useState('gemini-3-flash-preview');
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
+  const [lastUsedLlmModel, setLastUsedLlmModel] = useState('');
   const [successToast, setSuccessToast] = useState('');
 
   const currentYear = new Date().getFullYear();
@@ -102,6 +121,7 @@ export default function DashboardPage() {
       const formData = new FormData();
       formData.append('image', cameraImageFile);
       formData.append('input_type', 'camera');
+      formData.append('llm_model', selectedLlmModel);
 
       const response = await apiRequest('/expenses/extract-and-create', {
         method: 'POST',
@@ -109,6 +129,7 @@ export default function DashboardPage() {
       });
 
       setLastExtracted(response.extracted || null);
+      setLastUsedLlmModel(response.llm_model || selectedLlmModel);
       setCameraImageFile(null);
       setSuccessToast('Expense captured and saved successfully.');
       await loadData();
@@ -133,8 +154,9 @@ export default function DashboardPage() {
       ) : null}
 
       <header className="dashboard-header">
-        <div>
-          <h1>My Finance Dashboard</h1>
+        <div className="dashboard-header-title">
+          <img src="/assets/name_logo.svg" alt="FinTrackr" className="dashboard-logo" />
+          <h1>Dashboard</h1>
         </div>
         <div className="header-actions">
           <TopNavigation />
@@ -145,7 +167,7 @@ export default function DashboardPage() {
       <section className="stats-grid">
         <article className="stat-card">
           <h3>Total Expenses</h3>
-          <p>${totalSpend.toFixed(2)}</p>
+          <p>{formatInr(totalSpend)}</p>
         </article>
         <article className="stat-card">
           <h3>Entries</h3>
@@ -165,6 +187,19 @@ export default function DashboardPage() {
           </p>
           {isMobileDevice ? (
             <form onSubmit={addExpenseFromCamera} className="stack-form quick-capture-form">
+              <label>
+                AI Model
+                <select
+                  value={selectedLlmModel}
+                  onChange={(e) => setSelectedLlmModel(e.target.value)}
+                >
+                  {LLM_OPTIONS.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label>
                 Capture Receipt With Camera
                 <input
@@ -211,6 +246,7 @@ export default function DashboardPage() {
           {lastExtracted ? (
             <div className="extract-output">
               <h3>Last Extracted JSON</h3>
+              {lastUsedLlmModel ? <p>Model Used: {lastUsedLlmModel}</p> : null}
               <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
             </div>
           ) : null}
@@ -224,8 +260,8 @@ export default function DashboardPage() {
               <BarChart data={monthly}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
+                <YAxis tickFormatter={formatInr} />
+                <Tooltip formatter={(value) => formatInr(value)} />
                 <Bar dataKey="total" fill="#0057ff" />
               </BarChart>
             </ResponsiveContainer>
@@ -239,8 +275,8 @@ export default function DashboardPage() {
               <BarChart data={yearly}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="year" />
-                <YAxis />
-                <Tooltip />
+                <YAxis tickFormatter={formatInr} />
+                <Tooltip formatter={(value) => formatInr(value)} />
                 <Legend />
                 <Bar dataKey="total" fill="#00a37a" />
               </BarChart>
@@ -254,7 +290,7 @@ export default function DashboardPage() {
             <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie data={categoryData} dataKey="total" nameKey="category" outerRadius={90} fill="#ff7a00" />
-                <Tooltip />
+                <Tooltip formatter={(value) => formatInr(value)} />
               </PieChart>
             </ResponsiveContainer>
           </div>

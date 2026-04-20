@@ -17,6 +17,11 @@ export default function LoginPage() {
       await login(form.username, form.password);
       navigate('/dashboard');
     } catch (err) {
+      if ((err.message || '').toLowerCase().includes('email not verified')) {
+        const encodedEmail = encodeURIComponent(form.username);
+        navigate(`/verify-email?email=${encodedEmail}`);
+        return;
+      }
       setError(err.message);
     } finally {
       setSubmitting(false);
@@ -26,6 +31,17 @@ export default function LoginPage() {
   return (
     <main className="auth-layout">
       <section className="auth-card">
+        <div className="auth-brand-block" aria-label="FinTrackr brand">
+          <div className="auth-brand-lockup">
+            <img src="/assets/brand_logo.svg" alt="FinTrackr icon" className="auth-brand-icon" />
+            <img
+              src="/assets/name_logo.svg"
+              alt="FinTrackr"
+              className="auth-brand-wordmark"
+            />
+          </div>
+          <p className="auth-brand-tagline">Track. Grow. Simplify your finances.</p>
+        </div>
         <h1>Welcome back</h1>
         <p>Sign in to track daily expenses and monitor monthly and yearly trends.</p>
         <form onSubmit={handleSubmit} className="stack-form">
@@ -54,6 +70,9 @@ export default function LoginPage() {
         </form>
         <p>
           New user? <Link to="/register">Create an account</Link>
+        </p>
+        <p>
+          Already registered but not verified? <Link to="/verify-email">Verify now</Link>
         </p>
       </section>
     </main>

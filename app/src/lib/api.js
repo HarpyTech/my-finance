@@ -58,7 +58,9 @@ export async function apiRequest(path, options = {}) {
 
   if (!response.ok) {
     const detail = typeof payload === 'object' && payload !== null ? payload.detail : null;
-    throw new Error(detail || response.statusText || 'Request failed');
+    const err = new Error(detail || response.statusText || 'Request failed');
+    err.status = response.status;
+    throw err;
   }
 
   return payload;

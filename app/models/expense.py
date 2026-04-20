@@ -12,6 +12,7 @@ ExpenseInputType = Literal[
     "camera",
     "mixed",
 ]
+ExpenseLlmModel = Literal["gemini-2.5-flash",]
 
 
 class ExpenseLineItem(BaseModel):
@@ -19,20 +20,6 @@ class ExpenseLineItem(BaseModel):
     quantity: float = Field(default=1, gt=0)
     unit_price: float = Field(gt=0)
     total: float = Field(gt=0)
-
-
-class ExpenseTaxDetails(BaseModel):
-    subtotal: float = Field(default=0, ge=0)
-    tax: float = Field(default=0, ge=0)
-    cgst: float = Field(default=0, ge=0)
-    sgst: float = Field(default=0, ge=0)
-    igst: float = Field(default=0, ge=0)
-    vat: float = Field(default=0, ge=0)
-    service_tax: float = Field(default=0, ge=0)
-    cess: float = Field(default=0, ge=0)
-    tip: float = Field(default=0, ge=0)
-    discount: float = Field(default=0, ge=0)
-    total_tax: float = Field(default=0, ge=0)
 
 
 class ExpenseCreate(BaseModel):
@@ -44,7 +31,6 @@ class ExpenseCreate(BaseModel):
     vendor: str = Field(default="", max_length=128)
     description: str = Field(default="", max_length=255)
     expense_date: date
-    tax_details: ExpenseTaxDetails = Field(default_factory=ExpenseTaxDetails)
     line_items: list[ExpenseLineItem] = Field(default_factory=list)
 
 
@@ -58,5 +44,5 @@ class ExpenseItem(BaseModel):
     vendor: str
     description: str
     expense_date: date
-    tax_details: ExpenseTaxDetails = Field(default_factory=ExpenseTaxDetails)
+    llm_model: ExpenseLlmModel | None = None
     line_items: list[ExpenseLineItem] = Field(default_factory=list)
