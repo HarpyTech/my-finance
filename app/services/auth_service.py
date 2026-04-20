@@ -41,7 +41,56 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
 <html>
 <head>
     <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
     <title>Verify your FinTrackr account</title>
+    <style>
+        @media only screen and (max-width: 620px) {{
+            .email-shell {{
+                width: 100% !important;
+            }}
+
+            .email-header {{
+                padding: 14px 16px !important;
+            }}
+
+            .email-body {{
+                padding: 20px 16px !important;
+                font-size: 15px !important;
+            }}
+
+            .brand-logo {{
+                height: 32px !important;
+            }}
+
+            .name-logo {{
+                height: 25px !important;
+            }}
+
+            .otp-value {{
+                font-size: 34px !important;
+                letter-spacing: 4px !important;
+            }}
+        }}
+
+        @media only screen and (max-width: 420px) {{
+            .email-body {{
+                padding: 18px 12px !important;
+            }}
+
+            .otp-value {{
+                font-size: 30px !important;
+                letter-spacing: 2px !important;
+            }}
+
+            .brand-logo {{
+                height: 28px !important;
+            }}
+
+            .name-logo {{
+                height: 22px !important;
+            }}
+        }}
+    </style>
 </head>
 <body style=\"margin:0;padding:24px 12px;background:#eef3f9;\">
     <table
@@ -53,7 +102,8 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
         <tr>
             <td align=\"center\">
                 <table
-                    width=\"620\"
+                    width=\"100%\"
+                    class=\"email-shell\"
                     role=\"presentation\"
                     cellspacing=\"0\"
                     cellpadding=\"0\"
@@ -61,6 +111,7 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
                 >
                     <tr>
                         <td
+                            class=\"email-header\"
                             style=\"padding:16px 20px;background:#1b3774;border-bottom:4px solid #1d9e5f;border-radius:12px 12px 0 0;\"
                         >
                             <table
@@ -72,6 +123,7 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
                                 <tr>
                                     <td align=\"left\" style=\"width:40%;\">
                                         <img
+                                            class=\"brand-logo\"
                                             src=\"https://fintrackr.harpytechco.in/assets/brand_logo.svg\"
                                             alt=\"FinTrackr Brand Logo\"
                                             style=\"display:block;height:36px;width:auto;\"
@@ -79,6 +131,7 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
                                     </td>
                                     <td align=\"right\" style=\"width:60%;\">
                                         <img
+                                            class=\"name-logo\"
                                             src=\"https://fintrackr.harpytechco.in/assets/name_logo.svg\"
                                             alt=\"FinTrackr Name Logo\"
                                             style=\"display:inline-block;height:30px;width:auto;\"
@@ -90,6 +143,7 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
                     </tr>
                     <tr>
                         <td
+                            class=\"email-body\"
                             style=\"padding:26px 24px 24px 24px;font:16px/1.55 Arial,Helvetica,sans-serif;color:#1f2b3a;\"
                         >
                             <p style=\"margin:0 0 14px 0;color:#13213a;\">
@@ -113,6 +167,7 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
                                 </tr>
                                 <tr>
                                     <td
+                                        class=\"otp-value\"
                                         style=\"padding:0 14px 6px 14px;color:#214fba;font-size:40px;line-height:1.05;font-weight:800;letter-spacing:6px;\"
                                     >
                                         {otp}
