@@ -39,7 +39,6 @@ export default function AddExpensePage() {
   const [cameraImageFile, setCameraImageFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
-  const [lastUsedLlmModel, setLastUsedLlmModel] = useState('');
   const [error, setError] = useState('');
   const [sessionLimitReached, setSessionLimitReached] = useState(false);
   const [expenseLimit, setExpenseLimit] = useState(10);
@@ -130,7 +129,6 @@ export default function AddExpensePage() {
       });
 
       setLastExtracted(response.extracted || null);
-      setLastUsedLlmModel(response.llm_model || 'gemini-2.5-flash');
       setAiInputText('');
       setAiImageFile(null);
       setCameraImageFile(null);
@@ -236,7 +234,6 @@ export default function AddExpensePage() {
         <article className="panel">
           <h2>Add Expense From Text or Image</h2>
           <form onSubmit={addExpenseFromAi} className="stack-form">
-            {/* <p className="help-text">AI model: gemini-2.5-flash</p> */}
             <label>
               Text Input
               <textarea
@@ -283,7 +280,6 @@ export default function AddExpensePage() {
           {lastExtracted ? (
             <div className="extract-output">
               <h3>Last Extracted JSON</h3>
-              {/* {lastUsedLlmModel ? <p>Model Used: {lastUsedLlmModel}</p> : null} */}
               <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
             </div>
           ) : null}

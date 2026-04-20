@@ -17,10 +17,13 @@ from app.models.expense import ExpenseCreate, ExpenseInputType
 from app.services.expense_service import (
     add_expense,
     category_summary,
+    categories_monthly_summary,
     check_session_expense_limit,
+    daily_summary,
     get_expense_limit_status,
     list_expenses,
     monthly_summary,
+    vendors_monthly_summary,
     yearly_summary,
     SessionExpenseLimitError,
 )
@@ -281,6 +284,84 @@ def get_category_summary(
     except Exception as exc:
         logger.error(
             f"Unexpected error fetching category summary: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+@router.get("/summary/daily")
+def get_daily_summary(
+    year: int = Query(..., ge=2000, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    user: str = Depends(get_current_user),
+):
+    """Get daily expense totals for a given year and month"""
+    logger.info(f"Daily summary request for {year}-{month}")
+    try:
+        result = {"items": daily_summary(user, year, month)}
+        logger.info(f"Daily summary retrieved for {year}-{month}")
+        return result
+    except RuntimeError as exc:
+        logger.error(f"Service error fetching daily summary: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error fetching daily summary: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+@router.get("/summary/categories-monthly")
+def get_categories_monthly_summary(
+    year: int = Query(..., ge=2000, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    user: str = Depends(get_current_user),
+):
+    """Get category breakdown for a given year and month"""
+    logger.info(f"Categories monthly summary request for {year}-{month}")
+    try:
+        result = {"items": categories_monthly_summary(user, year, month)}
+        logger.info(f"Categories monthly summary retrieved for {year}-{month}")
+        return result
+    except RuntimeError as exc:
+        logger.error(f"Service error fetching categories monthly summary: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error fetching categories monthly summary: {str(exc)}",
+            exc_info=True,
+        )
+        raise
+
+
+@router.get("/summary/vendors-monthly")
+def get_vendors_monthly_summary(
+    year: int = Query(..., ge=2000, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    user: str = Depends(get_current_user),
+):
+    """Get vendor breakdown for a given year and month"""
+    logger.info(f"Vendors monthly summary request for {year}-{month}")
+    try:
+        result = {"items": vendors_monthly_summary(user, year, month)}
+        logger.info(f"Vendors monthly summary retrieved for {year}-{month}")
+        return result
+    except RuntimeError as exc:
+        logger.error(f"Service error fetching vendors monthly summary: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        logger.error(
+            f"Unexpected error fetching vendors monthly summary: {str(exc)}",
             exc_info=True,
         )
         raise

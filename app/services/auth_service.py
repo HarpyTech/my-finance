@@ -35,6 +35,169 @@ def _generate_signup_otp() -> str:
     return "".join(random.choices("0123456789", k=digits))
 
 
+def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
+    expiry_minutes = settings.SIGNUP_OTP_EXPIRY_MINUTES
+    return f"""<!doctype html>
+<html>
+<head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
+    <title>Verify your FinTrackr account</title>
+    <style>
+        @media only screen and (max-width: 620px) {{
+            .email-shell {{
+                width: 100% !important;
+            }}
+
+            .email-header {{
+                padding: 14px 16px !important;
+            }}
+
+            .email-body {{
+                padding: 20px 16px !important;
+                font-size: 15px !important;
+            }}
+
+            .brand-logo {{
+                height: 32px !important;
+            }}
+
+            .name-logo {{
+                height: 25px !important;
+            }}
+
+            .otp-value {{
+                font-size: 34px !important;
+                letter-spacing: 4px !important;
+            }}
+        }}
+
+        @media only screen and (max-width: 420px) {{
+            .email-body {{
+                padding: 18px 12px !important;
+            }}
+
+            .otp-value {{
+                font-size: 30px !important;
+                letter-spacing: 2px !important;
+            }}
+
+            .brand-logo {{
+                height: 28px !important;
+            }}
+
+            .name-logo {{
+                height: 22px !important;
+            }}
+        }}
+    </style>
+</head>
+<body style=\"margin:0;padding:24px 12px;background:#eef3f9;\">
+    <table
+        width=\"100%\"
+        role=\"presentation\"
+        cellspacing=\"0\"
+        cellpadding=\"0\"
+    >
+        <tr>
+            <td align=\"center\">
+                <table
+                    width=\"100%\"
+                    class=\"email-shell\"
+                    role=\"presentation\"
+                    cellspacing=\"0\"
+                    cellpadding=\"0\"
+                    style=\"max-width:620px;background:#ffffff;border:1px solid #d7e0ea;border-radius:12px;\"
+                >
+                    <tr>
+                        <td
+                            class=\"email-header\"
+                            style=\"padding:16px 20px;background:#1b3774;border-bottom:4px solid #1d9e5f;border-radius:12px 12px 0 0;\"
+                        >
+                            <table
+                                width=\"100%\"
+                                role=\"presentation\"
+                                cellspacing=\"0\"
+                                cellpadding=\"0\"
+                            >
+                                <tr>
+                                    <td align=\"left\" style=\"width:40%;\">
+                                        <img
+                                            class=\"brand-logo\"
+                                            src=\"https://fintrackr.harpytechco.in/assets/brand_logo.svg\"
+                                            alt=\"FinTrackr Brand Logo\"
+                                            style=\"display:block;height:36px;width:auto;\"
+                                        />
+                                    </td>
+                                    <td align=\"right\" style=\"width:60%;\">
+                                        <img
+                                            class=\"name-logo\"
+                                            src=\"https://fintrackr.harpytechco.in/assets/name_logo.svg\"
+                                            alt=\"FinTrackr Name Logo\"
+                                            style=\"display:inline-block;height:30px;width:auto;\"
+                                        />
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td
+                            class=\"email-body\"
+                            style=\"padding:26px 24px 24px 24px;font:16px/1.55 Arial,Helvetica,sans-serif;color:#1f2b3a;\"
+                        >
+                            <p style=\"margin:0 0 14px 0;color:#13213a;\">
+                                Hello {recipient},
+                            </p>
+                            <p style=\"margin:0 0 14px 0;color:#2f3f53;\">
+                                You received this email because a verification request was made for your
+                                FinTrackr account.
+                            </p>
+                            <table
+                                width=\"100%\"
+                                role=\"presentation\"
+                                cellspacing=\"0\"
+                                cellpadding=\"0\"
+                                style=\"margin:0 0 16px 0;background:#f4f8ff;border:1px solid #dbe8ff;border-left:4px solid #1d9e5f;border-radius:8px;\"
+                            >
+                                <tr>
+                                    <td style=\"padding:14px 14px 6px 14px;color:#2e4569;font-size:14px;\">
+                                        <strong>Your OTP is:</strong>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class=\"otp-value\"
+                                        style=\"padding:0 14px 6px 14px;color:#214fba;font-size:40px;line-height:1.05;font-weight:800;letter-spacing:6px;\"
+                                    >
+                                        {otp}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style=\"padding:0 14px 14px 14px;color:#4f5f73;font-size:13px;\">
+                                        This OTP expires in {expiry_minutes} minutes.
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style=\"margin:0 0 16px 0;color:#435366;\">
+                                If you did not initiate this request, please ignore this email.
+                            </p>
+                            <p style=\"margin:0 0 8px 0;color:#1f2b3a;\">Thanks &amp; Regards,</p>
+                            <p style=\"margin:0;color:#1b3774;font-weight:700;\">Support Team</p>
+                            <p style=\"margin:6px 0 0 0;color:#1d9e5f;font-size:13px;font-weight:700;\">
+                                FinTrackr
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+"""
+
+
 def _deliver_signup_otp(email: str, otp: str) -> None:
     subject = "Verify your FinTrackr account"
     body = (
@@ -59,6 +222,10 @@ def _deliver_signup_otp(email: str, otp: str) -> None:
     if settings.SMTP_BCC_EMAILS:
         message["Bcc"] = ", ".join(settings.SMTP_BCC_EMAILS)
     message.set_content(body)
+    message.add_alternative(
+        _build_signup_otp_email_html(email, otp),
+        subtype="html",
+    )
 
     try:
         smtp_client = smtplib.SMTP_SSL if settings.SMTP_USE_SSL else smtplib.SMTP
