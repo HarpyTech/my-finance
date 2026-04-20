@@ -53,9 +53,15 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
                         <td style=\"padding:14px 18px;background:#0f172a;color:#fff;\">
                             <table width=\"100%\" role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\">
                                 <tr>
-                                    <td align=\"left\" style=\"font-weight:700;font-size:14px;\">Branch LOGO</td>
-                                    <td align=\"right\" style=\"font-weight:700;font-size:14px;\">
-                                        FinTrackr Name Logo
+                                    <td align=\"left\" style=\"width:40%;\">
+                                        <img src=\"https://fintrackr.harpytechco.in/assets/brand_logo.svg\"
+                                             alt=\"Brand Logo\"
+                                             style=\"display:block;height:34px;width:auto;\" />
+                                    </td>
+                                    <td align=\"right\" style=\"width:60%;\">
+                                        <img src=\"https://fintrackr.harpytechco.in/assets/name_logo.svg\"
+                                             alt=\"FinTrackr Name Logo\"
+                                             style=\"display:inline-block;height:26px;width:auto;\" />
                                     </td>
                                 </tr>
                             </table>
