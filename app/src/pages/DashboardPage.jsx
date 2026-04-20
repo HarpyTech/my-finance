@@ -16,13 +16,6 @@ import { useAuth } from '../auth/AuthContext';
 import TopNavigation from '../components/TopNavigation';
 import { apiRequest } from '../lib/api';
 
-const LLM_OPTIONS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-pro',
-  'gemini-3-flash-preview',
-  'gemini-3.1-pro-preview',
-];
-
 const inrCurrencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',
@@ -45,10 +38,8 @@ export default function DashboardPage() {
   const [error, setError] = useState('');
   const [cameraImageFile, setCameraImageFile] = useState(null);
   const [cameraPreviewUrl, setCameraPreviewUrl] = useState('');
-  const [selectedLlmModel, setSelectedLlmModel] = useState('gemini-3-flash-preview');
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
-  const [lastUsedLlmModel, setLastUsedLlmModel] = useState('');
   const [successToast, setSuccessToast] = useState('');
 
   const currentYear = new Date().getFullYear();
@@ -121,7 +112,6 @@ export default function DashboardPage() {
       const formData = new FormData();
       formData.append('image', cameraImageFile);
       formData.append('input_type', 'camera');
-      formData.append('llm_model', selectedLlmModel);
 
       const response = await apiRequest('/expenses/extract-and-create', {
         method: 'POST',
@@ -129,7 +119,6 @@ export default function DashboardPage() {
       });
 
       setLastExtracted(response.extracted || null);
-      setLastUsedLlmModel(response.llm_model || selectedLlmModel);
       setCameraImageFile(null);
       setSuccessToast('Expense captured and saved successfully.');
       await loadData();
@@ -188,19 +177,6 @@ export default function DashboardPage() {
           {isMobileDevice ? (
             <form onSubmit={addExpenseFromCamera} className="stack-form quick-capture-form">
               <label>
-                AI Model
-                <select
-                  value={selectedLlmModel}
-                  onChange={(e) => setSelectedLlmModel(e.target.value)}
-                >
-                  {LLM_OPTIONS.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
                 Capture Receipt With Camera
                 <input
                   type="file"
@@ -246,7 +222,6 @@ export default function DashboardPage() {
           {lastExtracted ? (
             <div className="extract-output">
               <h3>Last Extracted JSON</h3>
-              {lastUsedLlmModel ? <p>Model Used: {lastUsedLlmModel}</p> : null}
               <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
             </div>
           ) : null}
