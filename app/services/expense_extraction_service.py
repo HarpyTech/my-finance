@@ -21,13 +21,7 @@ _CODE_FENCE_PATTERN = re.compile(r"```(?:json)?|```", re.IGNORECASE)
 _JSON_OBJECT_PATTERN = re.compile(r"\{[\s\S]*\}")
 _MAX_OUTPUT_TOKENS = 512
 _MAX_JSON_RETRIES = 2
-_PREFERRED_GEMINI_MODEL = "gemini-2.5-flash"
-_SUPPORTED_GEMINI_MODELS = (
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "gemini-3-flash-preview",
-    "gemini-3.1-pro-preview",
-)
+_GEMINI_MODEL = "gemini-2.5-flash"
 _gemini_models: dict[str, genai.GenerativeModel] = {}
 
 
@@ -123,14 +117,8 @@ def _resolve_model_name() -> str:
     if not model_name:
         raise RuntimeError("GEMINI_MODEL is not configured")
 
-    if model_name != _PREFERRED_GEMINI_MODEL:
-        raise RuntimeError("GEMINI_MODEL must be set to gemini-2.5-flash")
-
-    if model_name not in _SUPPORTED_GEMINI_MODELS:
-        raise ValueError(
-            "Unsupported llm_model. Allowed values: "
-            + ", ".join(_SUPPORTED_GEMINI_MODELS)
-        )
+    if model_name != _GEMINI_MODEL:
+        raise RuntimeError(f"GEMINI_MODEL must be set to {_GEMINI_MODEL}")
 
     return model_name
 
