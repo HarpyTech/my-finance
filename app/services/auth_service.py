@@ -43,47 +43,95 @@ def _build_signup_otp_email_html(recipient: str, otp: str) -> str:
     <meta charset=\"utf-8\" />
     <title>Verify your FinTrackr account</title>
 </head>
-<body style=\"margin:0;padding:20px;background:#f6f8fb;\">
-    <table width=\"100%\" role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\">
+<body style=\"margin:0;padding:24px 12px;background:#eef3f9;\">
+    <table
+        width=\"100%\"
+        role=\"presentation\"
+        cellspacing=\"0\"
+        cellpadding=\"0\"
+    >
         <tr>
             <td align=\"center\">
-                <table width=\"620\" role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\"
-                             style=\"max-width:620px;background:#fff;border:1px solid #e5e7eb;\">
+                <table
+                    width=\"620\"
+                    role=\"presentation\"
+                    cellspacing=\"0\"
+                    cellpadding=\"0\"
+                    style=\"max-width:620px;background:#ffffff;border:1px solid #d7e0ea;border-radius:12px;\"
+                >
                     <tr>
-                        <td style=\"padding:14px 18px;background:#0f172a;color:#fff;\">
-                            <table width=\"100%\" role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\">
+                        <td
+                            style=\"padding:16px 20px;background:#1b3774;border-bottom:4px solid #1d9e5f;border-radius:12px 12px 0 0;\"
+                        >
+                            <table
+                                width=\"100%\"
+                                role=\"presentation\"
+                                cellspacing=\"0\"
+                                cellpadding=\"0\"
+                            >
                                 <tr>
                                     <td align=\"left\" style=\"width:40%;\">
-                                        <img src=\"https://fintrackr.harpytechco.in/assets/brand_logo.svg\"
-                                             alt=\"Brand Logo\"
-                                             style=\"display:block;height:34px;width:auto;\" />
+                                        <img
+                                            src=\"https://fintrackr.harpytechco.in/assets/brand_logo.svg\"
+                                            alt=\"FinTrackr Brand Logo\"
+                                            style=\"display:block;height:36px;width:auto;\"
+                                        />
                                     </td>
                                     <td align=\"right\" style=\"width:60%;\">
-                                        <img src=\"https://fintrackr.harpytechco.in/assets/name_logo.svg\"
-                                             alt=\"FinTrackr Name Logo\"
-                                             style=\"display:inline-block;height:26px;width:auto;\" />
+                                        <img
+                                            src=\"https://fintrackr.harpytechco.in/assets/name_logo.svg\"
+                                            alt=\"FinTrackr Name Logo\"
+                                            style=\"display:inline-block;height:30px;width:auto;\"
+                                        />
                                     </td>
                                 </tr>
                             </table>
                         </td>
                     </tr>
                     <tr>
-                        <td style=\"padding:22px 20px;font:15px/1.5 Arial,Helvetica,sans-serif;\">
-                            <p style=\"margin:0 0 12px 0;\">Hello {recipient},</p>
-                            <p style=\"margin:0 0 12px 0;\">
+                        <td
+                            style=\"padding:26px 24px 24px 24px;font:16px/1.55 Arial,Helvetica,sans-serif;color:#1f2b3a;\"
+                        >
+                            <p style=\"margin:0 0 14px 0;color:#13213a;\">
+                                Hello {recipient},
+                            </p>
+                            <p style=\"margin:0 0 14px 0;color:#2f3f53;\">
                                 You received this email because a verification request was made for your
                                 FinTrackr account.
                             </p>
-                            <p style=\"margin:0 0 8px 0;\"><strong>Your OTP is:</strong></p>
-                            <p style=\"margin:0 0 12px 0;font-size:30px;letter-spacing:4px;color:#1d4ed8;\">
-                                <strong>{otp}</strong>
-                            </p>
-                            <p style=\"margin:0 0 12px 0;\">This OTP expires in {expiry_minutes} minutes.</p>
-                            <p style=\"margin:0 0 16px 0;\">
+                            <table
+                                width=\"100%\"
+                                role=\"presentation\"
+                                cellspacing=\"0\"
+                                cellpadding=\"0\"
+                                style=\"margin:0 0 16px 0;background:#f4f8ff;border:1px solid #dbe8ff;border-left:4px solid #1d9e5f;border-radius:8px;\"
+                            >
+                                <tr>
+                                    <td style=\"padding:14px 14px 6px 14px;color:#2e4569;font-size:14px;\">
+                                        <strong>Your OTP is:</strong>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        style=\"padding:0 14px 6px 14px;color:#214fba;font-size:40px;line-height:1.05;font-weight:800;letter-spacing:6px;\"
+                                    >
+                                        {otp}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style=\"padding:0 14px 14px 14px;color:#4f5f73;font-size:13px;\">
+                                        This OTP expires in {expiry_minutes} minutes.
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style=\"margin:0 0 16px 0;color:#435366;\">
                                 If you did not initiate this request, please ignore this email.
                             </p>
-                            <p style=\"margin:0 0 6px 0;\">Thanks &amp; Regards,</p>
-                            <p style=\"margin:0;font-weight:700;\">Support Team</p>
+                            <p style=\"margin:0 0 8px 0;color:#1f2b3a;\">Thanks &amp; Regards,</p>
+                            <p style=\"margin:0;color:#1b3774;font-weight:700;\">Support Team</p>
+                            <p style=\"margin:6px 0 0 0;color:#1d9e5f;font-size:13px;font-weight:700;\">
+                                FinTrackr
+                            </p>
                         </td>
                     </tr>
                 </table>
