@@ -13,8 +13,15 @@ import {
   YAxis,
 } from 'recharts';
 import { useAuth } from '../auth/AuthContext';
+import AvgCategoryBarChart from '../components/AvgCategoryBarChart';
+import CategoryDonutChart from '../components/CategoryDonutChart';
+import DailyExpenseChart from '../components/DailyExpenseChart';
+import MonthYearFilter from '../components/MonthYearFilter';
 import TopNavigation from '../components/TopNavigation';
+import VendorDonutChart from '../components/VendorDonutChart';
 import { apiRequest } from '../lib/api';
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 const inrCurrencyFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
@@ -42,6 +49,21 @@ export default function DashboardPage() {
   const [lastExtracted, setLastExtracted] = useState(null);
   const [successToast, setSuccessToast] = useState('');
 
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
+  const [dailyItems, setDailyItems] = useState([]);
+  const [categoryMonthlyItems, setCategoryMonthlyItems] = useState([]);
+  const [vendorMonthlyItems, setVendorMonthlyItems] = useState([]);
+  const [categoryYearlyItems, setCategoryYearlyItems] = useState([]);
+  const [dailyError, setDailyError] = useState('');
+  const [categoryMonthlyError, setCategoryMonthlyError] = useState('');
+  const [vendorMonthlyError, setVendorMonthlyError] = useState('');
+  const [categoryYearlyError, setCategoryYearlyError] = useState('');
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [categoryMonthlyLoading, setCategoryMonthlyLoading] = useState(false);
+  const [vendorMonthlyLoading, setVendorMonthlyLoading] = useState(false);
+  const [categoryYearlyLoading, setCategoryYearlyLoading] = useState(false);
+
   const currentYear = new Date().getFullYear();
 
   async function loadData() {
@@ -61,9 +83,60 @@ export default function DashboardPage() {
     }
   }
 
+  async function loadChartData(year, month) {
+    setDailyLoading(true);
+    setCategoryMonthlyLoading(true);
+    setVendorMonthlyLoading(true);
+    setCategoryYearlyLoading(true);
+    setDailyError('');
+    setCategoryMonthlyError('');
+    setVendorMonthlyError('');
+    setCategoryYearlyError('');
+
+    const [dailyResult, categoryMonthlyResult, vendorMonthlyResult, categoryYearlyResult] =
+      await Promise.allSettled([
+        apiRequest(`/expenses/summary/daily?year=${year}&month=${month}`),
+        apiRequest(`/expenses/summary/categories-monthly?year=${year}&month=${month}`),
+        apiRequest(`/expenses/summary/vendors-monthly?year=${year}&month=${month}`),
+        apiRequest(`/expenses/summary/categories?year=${year}`),
+      ]);
+
+    if (dailyResult.status === 'fulfilled') {
+      setDailyItems(dailyResult.value.items || []);
+    } else {
+      setDailyError(dailyResult.reason?.message || 'Failed to load daily data.');
+    }
+    setDailyLoading(false);
+
+    if (categoryMonthlyResult.status === 'fulfilled') {
+      setCategoryMonthlyItems(categoryMonthlyResult.value.items || []);
+    } else {
+      setCategoryMonthlyError(categoryMonthlyResult.reason?.message || 'Failed to load category data.');
+    }
+    setCategoryMonthlyLoading(false);
+
+    if (vendorMonthlyResult.status === 'fulfilled') {
+      setVendorMonthlyItems(vendorMonthlyResult.value.items || []);
+    } else {
+      setVendorMonthlyError(vendorMonthlyResult.reason?.message || 'Failed to load vendor data.');
+    }
+    setVendorMonthlyLoading(false);
+
+    if (categoryYearlyResult.status === 'fulfilled') {
+      setCategoryYearlyItems(categoryYearlyResult.value.items || []);
+    } else {
+      setCategoryYearlyError(categoryYearlyResult.reason?.message || 'Failed to load yearly category data.');
+    }
+    setCategoryYearlyLoading(false);
+  }
+
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    loadChartData(filterYear, filterMonth);
+  }, [filterYear, filterMonth]);
 
   useEffect(() => {
     if (!cameraImageFile) {
@@ -269,6 +342,32 @@ export default function DashboardPage() {
               </PieChart>
             </ResponsiveContainer>
           </div>
+        </article>
+      </section>
+
+      <section className="panel-grid">
+        <article className="panel" style={{ gridColumn: 'span 2' }}>
+          <h2>Daily Expenses — {MONTH_NAMES[filterMonth - 1]} {filterYear}</h2>
+          <MonthYearFilter
+            year={filterYear} month={filterMonth}
+            onYearChange={setFilterYear} onMonthChange={setFilterMonth}
+          />
+          <DailyExpenseChart items={dailyItems} loading={dailyLoading} error={dailyError} />
+        </article>
+
+        <article className="panel">
+          <h2>Expenses by Category — {MONTH_NAMES[filterMonth - 1]} {filterYear}</h2>
+          <CategoryDonutChart items={categoryMonthlyItems} loading={categoryMonthlyLoading} error={categoryMonthlyError} />
+        </article>
+
+        <article className="panel">
+          <h2>Expenses by Vendor — {MONTH_NAMES[filterMonth - 1]} {filterYear}</h2>
+          <VendorDonutChart items={vendorMonthlyItems} loading={vendorMonthlyLoading} error={vendorMonthlyError} />
+        </article>
+
+        <article className="panel" style={{ gridColumn: 'span 2' }}>
+          <h2>Avg Expense by Category — {filterYear}</h2>
+          <AvgCategoryBarChart items={categoryYearlyItems} loading={categoryYearlyLoading} error={categoryYearlyError} />
         </article>
       </section>
 
