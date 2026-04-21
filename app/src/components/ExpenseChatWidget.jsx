@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../lib/api';
 
-const STARTER_MESSAGE =
-  'Describe an expense in one sentence. Include the merchant, amount, date, and what it was for.';
-const EXAMPLE_MESSAGE =
-  'Example: Paid 320 at Starbucks on 2026-04-20 for coffee with client.';
-
 function createEntry(role, text, tone = 'default') {
   return {
     id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -50,10 +45,7 @@ export default function ExpenseChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [messages, setMessages] = useState([
-    createEntry('assistant', STARTER_MESSAGE),
-    createEntry('assistant', EXAMPLE_MESSAGE),
-  ]);
+  const [messages, setMessages] = useState([]);
   const [pendingExpenseContext, setPendingExpenseContext] = useState('');
   const [pendingMissingFields, setPendingMissingFields] = useState([]);
   const scrollRef = useRef(null);

@@ -179,7 +179,7 @@ button:disabled {
 }
 
 .expense-chat-panel {
-  width: min(380px, calc(100vw - 24px));
+  width: min(437px, calc(100vw - 24px));
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -875,7 +875,7 @@ td {
   }
 
   .expense-chat-panel {
-    width: min(100vw - 24px, 380px);
+    width: min(100vw - 24px, 437px);
   }
 }
 
