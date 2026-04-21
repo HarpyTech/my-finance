@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
+import ExpenseChatWidget from './components/ExpenseChatWidget';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import VerifyEmailPage from './pages/VerifyEmailPage';
@@ -19,7 +20,12 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  return (
+    <>
+      {children}
+      <ExpenseChatWidget />
+    </>
+  );
 }
 
 export default function App() {
