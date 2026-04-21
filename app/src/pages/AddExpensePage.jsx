@@ -47,6 +47,17 @@ export default function AddExpensePage() {
     syncExpenseLimitState();
   }, []);
 
+  useEffect(() => {
+    function handleExpenseCreated() {
+      syncExpenseLimitState();
+    }
+
+    window.addEventListener('expense:created', handleExpenseCreated);
+    return () => {
+      window.removeEventListener('expense:created', handleExpenseCreated);
+    };
+  }, []);
+
   async function syncExpenseLimitState() {
     try {
       const response = await apiRequest('/expenses/limit-status');
