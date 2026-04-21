@@ -262,6 +262,15 @@ button:disabled {
   color: #b42339;
 }
 
+.expense-chat-message.assistant.missing {
+  background: #fff7e8;
+  border-color: #f3c87b;
+  color: #7a4a00;
+  border-width: 2px;
+  box-shadow: 0 10px 24px rgba(243, 200, 123, 0.35);
+  font-weight: 600;
+}
+
 .expense-chat-form {
   display: grid;
   gap: 10px;

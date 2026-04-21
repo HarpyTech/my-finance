@@ -15,6 +15,37 @@ function createEntry(role, text, tone = 'default') {
   };
 }
 
+function parseMissingFields(message) {
+  if (!message) {
+    return [];
+  }
+
+  const lower = String(message).toLowerCase();
+  const startToken = 'extract the ';
+  const endToken = '. please include';
+  const startIndex = lower.indexOf(startToken);
+  const endIndex = lower.indexOf(endToken);
+
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return [];
+  }
+
+  const missingSegment = lower
+    .slice(startIndex + startToken.length, endIndex)
+    .replace(/\./g, '')
+    .trim();
+
+  if (!missingSegment) {
+    return [];
+  }
+
+  return missingSegment
+    .replace(/\sand\s/g, ',')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export default function ExpenseChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState('');
@@ -23,6 +54,8 @@ export default function ExpenseChatWidget() {
     createEntry('assistant', STARTER_MESSAGE),
     createEntry('assistant', EXAMPLE_MESSAGE),
   ]);
+  const [pendingExpenseContext, setPendingExpenseContext] = useState('');
+  const [pendingMissingFields, setPendingMissingFields] = useState([]);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -38,25 +71,31 @@ export default function ExpenseChatWidget() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    const message = draft.trim();
-    if (!message || submitting) {
+    const latestUserMessage = draft.trim();
+    if (!latestUserMessage || submitting) {
       return;
     }
 
-    setMessages((prev) => [...prev, createEntry('user', message)]);
+    const composedMessage = pendingExpenseContext
+      ? `${pendingExpenseContext}\n${latestUserMessage}`
+      : latestUserMessage;
+
+    setMessages((prev) => [...prev, createEntry('user', latestUserMessage)]);
     setDraft('');
     setSubmitting(true);
 
     try {
       const response = await apiRequest('/expenses/chat-create', {
         method: 'POST',
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message: composedMessage }),
       });
 
       setMessages((prev) => [
         ...prev,
         createEntry('assistant', response.message || 'Expense saved successfully.', 'success'),
       ]);
+      setPendingExpenseContext('');
+      setPendingMissingFields([]);
 
       window.dispatchEvent(
         new CustomEvent('expense:created', {
@@ -64,10 +103,26 @@ export default function ExpenseChatWidget() {
         })
       );
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        createEntry('assistant', err.message || 'Unable to save that expense right now.', 'error'),
-      ]);
+      const missingFields = parseMissingFields(err.message || '');
+      if (missingFields.length > 0) {
+        setPendingExpenseContext(composedMessage);
+        setPendingMissingFields(missingFields);
+        setMessages((prev) => [
+          ...prev,
+          createEntry(
+            'assistant',
+            `Need only these missing details: ${missingFields.join(', ')}.`,
+            'missing'
+          ),
+        ]);
+      } else {
+        setPendingExpenseContext('');
+        setPendingMissingFields([]);
+        setMessages((prev) => [
+          ...prev,
+          createEntry('assistant', err.message || 'Unable to save that expense right now.', 'error'),
+        ]);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -109,10 +164,16 @@ export default function ExpenseChatWidget() {
 
           <form className="expense-chat-form" onSubmit={handleSubmit}>
             <label className="expense-chat-label">
-              Describe the expense
+              {pendingMissingFields.length > 0
+                ? `Reply with only: ${pendingMissingFields.join(', ')}`
+                : 'Describe the expense'}
               <textarea
                 rows={3}
-                placeholder="Paid 320 at Starbucks on 2026-04-20 for coffee with client."
+                placeholder={
+                  pendingMissingFields.length > 0
+                    ? `Provide only ${pendingMissingFields.join(', ')}.`
+                    : 'Paid 320 at Starbucks on 2026-04-20 for coffee with client.'
+                }
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
               />
