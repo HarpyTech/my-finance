@@ -201,10 +201,22 @@ export default function ExpenseChatWidget() {
         type="button"
         className="expense-chat-launcher"
         onClick={() => setIsOpen((prev) => !prev)}
+        aria-label={isOpen ? 'Close expense chat' : 'Open expense chat'}
         aria-expanded={isOpen}
         aria-controls="expense-chat-panel"
       >
-        Chat Expense
+        <svg
+          className="expense-chat-launcher-icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <rect x="5" y="7" width="14" height="10" rx="3" />
+          <circle cx="9.5" cy="12" r="1.2" />
+          <circle cx="14.5" cy="12" r="1.2" />
+          <path d="M9 15.3c1 .7 2 .9 3 .9s2-.2 3-.9" />
+          <path d="M12 7V4" />
+          <circle cx="12" cy="3" r="1" />
+        </svg>
       </button>
     </div>
   );
