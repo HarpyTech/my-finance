@@ -128,6 +128,16 @@ export default function ExpenseChatWidget() {
     }
   }
 
+  function handleStartNewExpense() {
+    setPendingExpenseContext('');
+    setPendingMissingFields([]);
+    setDraft('');
+    setMessages((prev) => [
+      ...prev,
+      createEntry('assistant', 'Ready for a new expense. Share the next one in one sentence.'),
+    ]);
+  }
+
   return (
     <div className="expense-chat-widget">
       {isOpen ? (
@@ -178,9 +188,19 @@ export default function ExpenseChatWidget() {
                 onChange={(event) => setDraft(event.target.value)}
               />
             </label>
+            <div className="expense-chat-actions">
+              <button
+                type="button"
+                className="expense-chat-reset"
+                onClick={handleStartNewExpense}
+                disabled={submitting}
+              >
+                Start new expense
+              </button>
             <button type="submit" disabled={submitting || !draft.trim()}>
               {submitting ? 'Saving...' : 'Send'}
             </button>
+            </div>
           </form>
         </section>
       ) : null}
