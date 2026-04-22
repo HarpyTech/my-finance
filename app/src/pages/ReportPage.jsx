@@ -31,6 +31,17 @@ export default function ReportPage() {
     loadExpenses();
   }, []);
 
+  useEffect(() => {
+    function handleExpenseCreated() {
+      loadExpenses();
+    }
+
+    window.addEventListener('expense:created', handleExpenseCreated);
+    return () => {
+      window.removeEventListener('expense:created', handleExpenseCreated);
+    };
+  }, []);
+
   async function loadExpenses() {
     try {
       const response = await apiRequest('/expenses');

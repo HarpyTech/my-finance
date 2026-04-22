@@ -139,6 +139,18 @@ export default function DashboardPage() {
   }, [filterYear, filterMonth]);
 
   useEffect(() => {
+    function handleExpenseCreated() {
+      loadData();
+      loadChartData(filterYear, filterMonth);
+    }
+
+    window.addEventListener('expense:created', handleExpenseCreated);
+    return () => {
+      window.removeEventListener('expense:created', handleExpenseCreated);
+    };
+  }, [filterYear, filterMonth]);
+
+  useEffect(() => {
     if (!cameraImageFile) {
       setCameraPreviewUrl('');
       return undefined;
