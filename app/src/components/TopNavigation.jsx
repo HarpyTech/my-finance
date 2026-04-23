@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import InstallAppButton from './InstallAppButton';
 
 const MENU_ITEMS = [
   { to: '/dashboard', icon: 'DB', label: 'Dashboard' },
@@ -161,6 +162,7 @@ export default function TopNavigation() {
         </div>
 
         <div className="profile-menu" ref={menuContainerRef}>
+          <InstallAppButton />
           <button
             type="button"
             className="profile-icon-button"

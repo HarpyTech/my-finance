@@ -40,6 +40,7 @@ export default function AddExpensePage() {
   const [extracting, setExtracting] = useState(false);
   const [lastExtracted, setLastExtracted] = useState(null);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [sessionLimitReached, setSessionLimitReached] = useState(false);
   const [expenseLimit, setExpenseLimit] = useState(10);
 
@@ -79,10 +80,12 @@ export default function AddExpensePage() {
   async function addExpense(event) {
     event.preventDefault();
     setError('');
+    setMessage('');
 
     try {
-      await apiRequest('/expenses', {
+      const response = await apiRequest('/expenses', {
         method: 'POST',
+        offlineQueue: true,
         body: JSON.stringify({
           amount: Number(expenseForm.amount),
           category: expenseForm.category,
@@ -97,6 +100,13 @@ export default function AddExpensePage() {
         amount: '',
         description: '',
       }));
+      if (response?.queued) {
+        setMessage(response.message);
+        return;
+      }
+
+      setMessage('Expense saved successfully.');
+      window.dispatchEvent(new CustomEvent('expense:created'));
       await syncExpenseLimitState();
     } catch (err) {
       if (err.status === 429) {
@@ -110,6 +120,7 @@ export default function AddExpensePage() {
   async function addExpenseFromAi(event) {
     event.preventDefault();
     setError('');
+    setMessage('');
 
     const selectedImageFile = cameraImageFile || aiImageFile;
     if (!aiInputText.trim() && !selectedImageFile) {
@@ -143,6 +154,8 @@ export default function AddExpensePage() {
       setAiInputText('');
       setAiImageFile(null);
       setCameraImageFile(null);
+      setMessage('Expense extracted and saved successfully.');
+      window.dispatchEvent(new CustomEvent('expense:created'));
       await syncExpenseLimitState();
     } catch (err) {
       if (err.status === 429) {
@@ -239,6 +252,8 @@ export default function AddExpensePage() {
               />
             </label>
             <button type="submit" disabled={sessionLimitReached}>Save Expense</button>
+            {message ? <p className="success-text">{message}</p> : null}
+            {error ? <p className="error-text">{error}</p> : null}
           </form>
         </article>
 
@@ -294,6 +309,7 @@ export default function AddExpensePage() {
               <pre>{JSON.stringify(lastExtracted, null, 2)}</pre>
             </div>
           ) : null}
+          {message ? <p className="success-text">{message}</p> : null}
           {error ? <p className="error-text">{error}</p> : null}
         </article>
       </section>
