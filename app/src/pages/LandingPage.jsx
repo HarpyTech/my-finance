@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import InstallAppButton from '../components/InstallAppButton';
 
 const highlights = [
   {
@@ -29,7 +30,7 @@ export default function LandingPage() {
         <div className="landing-badge">Personal Finance Companion</div>
         <div className="landing-brand-row">
           <img
-            src="/assets/brand_logo.svg"
+            src="/assets/FinTrackr_App_Logo-3.png"
             alt="FinTrackr icon"
             className="landing-brand-icon"
           />
@@ -48,6 +49,7 @@ export default function LandingPage() {
         <div className="landing-cta-row">
           <Link to="/register" className="landing-primary-cta">Get Started</Link>
           <Link to="/login" className="landing-secondary-cta">I Already Have an Account</Link>
+          <InstallAppButton variant="hero" />
         </div>
       </section>
 
