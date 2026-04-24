@@ -14,7 +14,7 @@ const CORE_ASSETS = [
   '/manifest.json',
   '/browserconfig.xml',
   '/favicon.ico',
-  '/assets/brand_logo.svg',
+  '/assets/FinTrackr_App_Logo-3.png',
   '/assets/name_logo.svg',
   '/pwa/icon-192.png',
   '/pwa/icon-512.png',

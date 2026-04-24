@@ -30,7 +30,7 @@ export default function LandingPage() {
         <div className="landing-badge">Personal Finance Companion</div>
         <div className="landing-brand-row">
           <img
-            src="/assets/brand_logo.svg"
+            src="/assets/FinTrackr_App_Logo-3.png"
             alt="FinTrackr icon"
             className="landing-brand-icon"
           />
