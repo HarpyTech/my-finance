@@ -43,7 +43,6 @@ export function PwaProvider({ children }) {
     function handleAppInstalled() {
       setDeferredPrompt(null);
       setInstallStatus('installed');
-      setSyncMessage('FinTrackr is installed and can open like a standalone app.');
     }
 
     function handleOnline() {

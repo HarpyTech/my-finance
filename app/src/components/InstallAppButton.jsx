@@ -15,8 +15,10 @@ function getInstallHelp(platform) {
 }
 
 export default function InstallAppButton({ variant = 'default' }) {
-  const { canInstall, installStatus, isOffline, isStandalone, platform, promptInstall, syncMessage } = usePwa();
+  const { canInstall, installStatus, isOffline, isStandalone, platform, promptInstall } = usePwa();
   const [feedback, setFeedback] = useState('');
+
+  const isInstalled = isStandalone || installStatus === 'installed';
 
   const hint = useMemo(() => getInstallHelp(platform), [platform]);
 
@@ -42,7 +44,8 @@ export default function InstallAppButton({ variant = 'default' }) {
 
   const wrapperClass = variant === 'hero' ? 'pwa-install pwa-install-hero' : 'pwa-install';
   const buttonClass = variant === 'hero' ? 'landing-secondary-cta pwa-install-button' : 'secondary-button pwa-install-button';
-  const buttonLabel = isStandalone || installStatus === 'installed' ? 'Installed' : 'Install App';
+  const buttonLabel = isInstalled ? 'Installed' : 'Install App';
+  const statusMessage = isInstalled ? 'Installation complete. FinTrackr is ready to use on this device.' : feedback;
 
   return (
     <div className={wrapperClass}>
@@ -50,21 +53,18 @@ export default function InstallAppButton({ variant = 'default' }) {
         type="button"
         className={buttonClass}
         onClick={handleInstall}
-        disabled={isStandalone || installStatus === 'installed'}
+        disabled={isInstalled}
       >
         {buttonLabel}
       </button>
-      <p className="pwa-install-copy">
-        {isOffline ? 'Offline mode is available once the app shell has been cached.' : 'Install FinTrackr for faster launches and a full-screen experience.'}
-      </p>
-      {feedback ? (
-        <p className="pwa-install-feedback" role="status" aria-live="polite">
-          {feedback}
+      {!isInstalled ? (
+        <p className="pwa-install-copy">
+          {isOffline ? 'Offline mode is available once the app shell has been cached.' : 'Install FinTrackr for faster launches and a full-screen experience.'}
         </p>
       ) : null}
-      {!feedback && syncMessage ? (
+      {statusMessage ? (
         <p className="pwa-install-feedback" role="status" aria-live="polite">
-          {syncMessage}
+          {statusMessage}
         </p>
       ) : null}
     </div>
