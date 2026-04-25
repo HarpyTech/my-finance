@@ -125,6 +125,29 @@ a:focus-visible {
   background: linear-gradient(160deg, rgba(35, 64, 142, 0.08), transparent 36%), var(--page-bg);
 }
 
+.auth-layout-register {
+  background: linear-gradient(160deg, rgba(24, 79, 153, 0.09), transparent 42%), var(--page-bg);
+}
+
+.auth-register-brand {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.auth-register-brand-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-register-brand-title {
+  margin: 0;
+  color: var(--heading);
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
 .auth-login-shell {
   width: min(420px, 100%);
 }
@@ -187,6 +210,22 @@ a:focus-visible {
   margin-bottom: 14px;
   color: var(--muted-strong);
   line-height: 1.55;
+}
+
+.auth-register-copy {
+  margin: 0 0 14px;
+  text-align: center;
+  color: var(--muted-strong);
+  line-height: 1.55;
+}
+
+.auth-inline-info {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--brand-soft-border);
+  background: var(--brand-soft);
+  color: var(--accent-text);
+  border-radius: 10px;
 }
 
 .auth-inline-error {
