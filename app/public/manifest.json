@@ -37,14 +37,14 @@
     ],
     "screenshots": [
         {
-            "src": "/pwa/screenshot-wide.png",
+            "src": "/assets/app_logo.png",
             "sizes": "1280x720",
             "type": "image/png",
             "form_factor": "wide",
             "label": "FinTrackr dashboard experience on desktop"
         },
         {
-            "src": "/pwa/screenshot-narrow.png",
+            "src": "/assets/app_logo.png",
             "sizes": "720x1280",
             "type": "image/png",
             "form_factor": "narrow",
