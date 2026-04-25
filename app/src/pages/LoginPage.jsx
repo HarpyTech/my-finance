@@ -33,7 +33,7 @@ export default function LoginPage() {
       <section className="auth-card">
         <div className="auth-brand-block" aria-label="FinTrackr brand">
           <div className="auth-brand-lockup">
-            <img src="/assets/brand_logo.svg" alt="FinTrackr icon" className="auth-brand-icon" />
+            <img src="/assets/FinTrackr_App_Logo-3.png" alt="FinTrackr icon" className="auth-brand-icon" />
             <img
               src="/assets/name_logo.svg"
               alt="FinTrackr"

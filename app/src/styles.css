@@ -132,6 +132,11 @@ button:disabled {
   margin: 4px 0;
 }
 
+.success-text {
+  color: #0d6b4f;
+  margin: 4px 0;
+}
+
 .session-limit-banner {
   background: #fff4e5;
   border: 1px solid #f5a623;
@@ -364,6 +369,7 @@ button:disabled {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .top-menu-links {
@@ -410,6 +416,35 @@ button:disabled {
 .profile-menu {
   position: relative;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pwa-install {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+}
+
+.pwa-install-hero {
+  min-width: min(280px, 100%);
+}
+
+.pwa-install-button {
+  white-space: nowrap;
+}
+
+.pwa-install-copy,
+.pwa-install-feedback {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #516079;
+}
+
+.pwa-install-feedback {
+  color: #183054;
 }
 
 .profile-icon-button {
@@ -681,6 +716,7 @@ button:disabled {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: flex-start;
 }
 
 .landing-primary-cta,
@@ -836,6 +872,8 @@ td {
   .profile-menu {
     margin-left: 0;
     align-self: flex-end;
+    width: 100%;
+    justify-content: space-between;
   }
 
   .profile-icon-button {
@@ -877,6 +915,10 @@ td {
   .landing-primary-cta,
   .landing-secondary-cta {
     text-align: center;
+  }
+
+  .pwa-install-hero {
+    width: 100%;
   }
 
   .panel[style*="span 2"] {
