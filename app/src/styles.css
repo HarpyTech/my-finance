@@ -245,32 +245,66 @@ button:disabled {
 .theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   border: 1px solid var(--brand-soft-border);
   background: var(--surface-soft);
   color: var(--accent-text);
   font-weight: 700;
-  padding: 9px 13px;
-  border-radius: 999px;
+  padding: 4px;
+  border-radius: 14px;
+}
+
+.theme-toggle-option {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-strong);
+  padding: 6px 10px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+}
+
+.theme-toggle-option[data-active='true'] {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--brand);
+  box-shadow: 0 8px 18px rgba(13, 31, 62, 0.08);
+}
+
+.theme-toggle-label {
+  font-size: 13px;
 }
 
 .theme-toggle-glyph {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
   background: var(--brand-soft);
   color: var(--brand);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .theme-toggle-floating {
   position: fixed;
-  top: 18px;
-  right: 18px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
   z-index: 80;
   box-shadow: var(--panel-shadow);
+}
+
+.theme-toggle-floating .theme-toggle-label {
+  display: none;
+}
+
+.theme-toggle-floating .theme-toggle-option {
+  min-width: 38px;
+  justify-content: center;
+  padding: 6px 8px;
 }
 
 .dashboard-layout {
@@ -1059,6 +1093,7 @@ td {
 
   .theme-toggle {
     justify-content: center;
+    width: fit-content;
   }
 
   .profile-icon-button {
@@ -1085,8 +1120,8 @@ td {
   }
 
   .theme-toggle-floating {
-    top: 12px;
-    right: 12px;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
   }
 
   .landing-hero,
