@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import ThemeToggle from './ThemeToggle';
 
 const MENU_ITEMS = [
   { to: '/dashboard', icon: 'DB', label: 'Dashboard' },
@@ -159,6 +160,8 @@ export default function TopNavigation() {
             </NavLink>
           ))}
         </div>
+
+        <ThemeToggle />
 
         <div className="profile-menu" ref={menuContainerRef}>
           <button
